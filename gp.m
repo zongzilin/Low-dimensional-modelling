@@ -4,8 +4,6 @@ classdef gp
     function I = find_wave_number_in_map(nx, nz, pod_wave)
     
         r = size(pod_wave,1);
-        nx = abs(nx);
-        nz = abs(nz);
         
         for i = 1:r
         
@@ -19,7 +17,7 @@ classdef gp
     
     end
 
-    function out = filter_out_of_range(model, wave_map)
+    function [out, loc] = filter_out_of_range(model, wave_map)
         % this function filters out the mx = nx - kx and mz that are no in
         % the model wavenumber range
     
@@ -27,6 +25,10 @@ classdef gp
     
         for i = 1:r_wave
             a(i) = ismember(abs(wave_map(i,:)),model,'row');
+            
+            if a(i) == 1
+                loc(i) = i;
+            end
         end
     
         wave_map = wave_map(a,:);
@@ -34,7 +36,7 @@ classdef gp
         
     end    
     
-    function [lin_nonlin_ind, model] = load_predefined_model(model_name)
+    function [lin_nonlin_ind, fullmode, model] = load_predefined_model(model_name)
 
         if model_name == 6
             model = [ 0, 0, 1; ...
@@ -70,8 +72,9 @@ classdef gp
                 ind = ind + 1;
             end
         end
-        map_kxkz = galerkin_projection.filter_out_of_range(model(:,1:2), map_kxkz);
-        
+        map_kxkz = gp.filter_out_of_range(model(:,1:2), map_kxkz);
+        fullmode = map_kxkz;
+
         % do the mx = nx - kx subtraction
         map_mxmz = zeros([size(map_kxkz),size(map_kxkz,1)]);
         for i = 1:size(map_kxkz,1)
@@ -81,12 +84,16 @@ classdef gp
         % linear and nonlinear operator indexing
         lin_nonlin_ind = struct();
         for i = 1:size(map_kxkz,1)
-            lin_nonlin_ind(i).kxkz(1,:) = map_kxkz(i,:);
+            lin_nonlin_ind(i).nxnz(1,:) = map_kxkz(i,:);
             
             % filter out wavenumber not in model
-            a = galerkin_projection.filter_out_of_range(map_kxkz, map_mxmz(:,:,i));
-        
+            a = gp.filter_out_of_range(map_kxkz, map_mxmz(:,:,i));
+            
             lin_nonlin_ind(i).mxmz = a;
+
+            % recover kxkz
+            lin_nonlin_ind(i).kxkz = lin_nonlin_ind(i).nxnz(1,:) - ...
+                                        lin_nonlin_ind(i).mxmz;
         end
 
     end
@@ -136,7 +143,52 @@ classdef gp
         N = nU + nV + nW;
         N = -N/sqrt(Lx*Lz);
     end    
+
+    function N = eval_N_k(y, Lx, Lz, phi, n, m, k, nx, nz, kx, kz, mx, mz, pod_wave,...
+                    diff_weight, int_weight)
+
+    I_n = gp.find_wave_number_in_map(nx, nz, pod_wave);
+    I_k = gp.find_wave_number_in_map(kx, kz, pod_wave);
+    I_m = gp.find_wave_number_in_map(mx, mz, pod_wave);
+
+    phiu_n = phi(1:3:end,n, I_n);
+    phiv_n = phi(2:3:end,n, I_n);
+    phiw_n = phi(3:3:end,n, I_n);
+
+    phiu_k = phi(1:3:end,k, I_k);
+    phiv_k = phi(2:3:end,k, I_k);
+    phiw_k = phi(3:3:end,k, I_k);    
+
+    phiu_m = phi(1:3:end,m, I_m);
+    phiv_m = phi(2:3:end,m, I_m);
+    phiw_m = phi(3:3:end,m, I_m);
+
+    dphi_u = math.diff_phi(phiu_m, diff_weight);
+    dphi_v = math.diff_phi(phiv_m, diff_weight);
+    dphi_w = math.diff_phi(phiw_m, diff_weight);
+
+    int_nonlin_u = ((2*pi*1i*mx/Lx)*phiu_k.*phiu_m + ...
+                   phiv_k.*dphi_u + (2*pi*1i*mz/Lz)*phiw_k.*phiu_m).*conj(phiu_n);
+    int_nonlin_v = ((2*pi*mx*1i/Lx)*phiu_k.*phiv_m + ...
+                   phiv_k.*dphi_v + (2*pi*mz*1i/Lz)*phiw_k.*phiv_m).*conj(phiv_n);
+    int_nonlin_w = ((2*pi*mx*1i/Lx)*phiu_k.*phiw_m + ...
+                   phiv_k.*dphi_w + (2*pi*mz*1i/Lz)*phiw_k.*phiw_m).*conj(phiw_n);    
+
+    nonlin_u = 0;
+    nonlin_v = 0;
+    nonlin_w = 0;
+    for i = 1:length(y)
+        nonlin_u = nonlin_u + int_weight(i)*int_nonlin_u(i);
+        nonlin_v = nonlin_v + int_weight(i)*int_nonlin_v(i);
+        nonlin_w = nonlin_w + int_weight(i)*int_nonlin_w(i);    
+    end
     
+    nonlin = nonlin_u + nonlin_v + nonlin_w;
+
+    N = -nonlin/sqrt(Lx*Lz);
+
+end
+
     function L = eval_L(Re, ny, y, Lx, Lz, phi, n, m, nx, nz, pod_wave, w)
              
         % ny: number of y division from cfd
