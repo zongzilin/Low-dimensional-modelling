@@ -9,7 +9,7 @@ load('dns_pod_modes_time_coeff.mat');
 
 [x,y,z,nx,ny,nz,Lx,Lz] = modal_decomposition.read_geom;
 
-[lin_nonlin_ind, fullmode, model] = gp.load_predefined_model(6);
+[lin_nonlin_ind, fullmode, model] = gp.load_predefined_model(9);
 % [lin_nonlin_ind, fullmode] = gp.load_model(4, 4);
 
 w = math.f_chebyshev_int_weight(ny);
@@ -26,7 +26,7 @@ no_pod = length(n_pod);
 % Number of pod modes that we want to project into
 nw_pod = 1;
 
-% Construct index before going into loops
+% Construct pod index before going into loops
 L = struct();
 fullmode = repmat(fullmode,nw_pod,1);
 for i = 1:size(fullmode, 1)
@@ -51,33 +51,42 @@ for i = 1:size(lin_nonlin_ind,2)*nw_pod
     end
 end
 
-% N = struct();
-% for i = 1:size(lin_nonlin_ind,2)
-%     
-%     N(i).nxnz = lin_nonlin_ind(i).nxnz;
-%     N(i).kxkz = lin_nonlin_ind(i).kxkz;
-%     N(i).mxmz = lin_nonlin_ind(i).mxmz;
-%    
-%     nxnz = N(i).nxnz;
-% 
-%     mxmz_arr = N(i).mxmz;
-%     kxkz_arr = N(i).kxkz;
-% 
-%     N(i).coeff = zeros(size(mxmz_arr,1),1);
-% 
-%     for j = 1:size(mxmz_arr,1)
-%         kx = kxkz_arr(j,1);
-%         kz = kxkz_arr(j,2);
-% 
-%         mx = mxmz_arr(j,1);
-%         mz = mxmz_arr(j,2);
-% 
-%         N(i).coeff(j) = gp.eval_N_k(y, Lx, Lz, phi, n, m, k, nxnz(1), nxnz(2), kx, kz, mx, mz, pod_wave,...
-%                     dw, w);
-% 
-%     end
-% 
-% end
+N = struct();
+for i = 1:size(fullpod, 1)
+    N(i).n = fullpod(i); 
+    N(i).coeff = 0;
+end
+for i = 1:size(lin_nonlin_ind,2)*nw_pod
+    
+    N(i).nxnz = lin_nonlin_ind(i).nxnz;
+    N(i).kxkz = lin_nonlin_ind(i).kxkz;
+    N(i).mxmz = lin_nonlin_ind(i).mxmz;
+   
+    nxnz = N(i).nxnz;
+
+    mxmz_arr = N(i).mxmz;
+    kxkz_arr = N(i).kxkz;
+
+    N(i).coeff = zeros(size(mxmz_arr,1),1);
+
+    for j = 1:size(mxmz_arr,1)
+        kx = kxkz_arr(j,1);
+        kz = kxkz_arr(j,2);
+
+        mx = mxmz_arr(j,1);
+        mz = mxmz_arr(j,2);
+
+        for i_pod_m = 1:no_pod
+            for i_pod_k = 1:no_pod
+
+                N(i).coeff(j) = N(i).coeff(j) + gp.eval_N_k(y, Lx, Lz, phi, N(i).n , n_pod(i_pod_m), n_pod(i_pod_k), nxnz(1), nxnz(2), kx, kz, mx, mz, pod_wave,...
+                                                dw, w);
+            end
+        end
+
+    end
+
+end
 
 a0 = zeros(size(fullmode,1),1);
 t_init_cond = 2000;
@@ -91,7 +100,7 @@ for i = 1:size(fullmode)
 
 end
 
-tspan = 0:0.5:3000;
+tspan = 0:0.1:3000;
 opt = odeset();
 
 [t_a, a] = ode45(@(t,a) func_hdl(t, a, L, N, lin_nonlin_ind, fullmode),...
