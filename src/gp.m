@@ -17,6 +17,62 @@ classdef gp
     
     end
 
+    function I = find_wave_number_pod_in_map(np, nx, nz, pod_wave)
+    
+        r = size(pod_wave,1);
+        
+        for i = 1:r
+        
+            if ((pod_wave(i,1) == np) && (pod_wave(i,2) == nx) && (pod_wave(i,3) == nz))
+                break
+            end
+    
+        end
+    
+        I = i;
+    
+    end    
+
+    function L = find_POD_pair_conj_index_in_model(L, nw_pod, const_lin_nonlin_ind,fullmode)
+
+        % Nothing mathematical. Just for the ease of calculation
+
+        for i = 1:size(fullmode,1)
+        c_nxnz = L(i).nxnz;
+    
+        counter = 0;
+    
+            for ii = 1:size(fullmode,1)
+                match_nxnz = L(ii).nxnz;
+        
+                if ((match_nxnz == c_nxnz))
+                    counter = counter + 1;
+                    L(i).pod_pair(counter) = ii;
+                end
+            end
+        end       
+
+        conj_ind = zeros(nw_pod,1);
+        conj_ind(1) = (size(const_lin_nonlin_ind,2) + 1)/2; % first conjugation index
+
+        for i = 2:nw_pod
+            conj_ind(i) = conj_ind(i-1) + size(const_lin_nonlin_ind,2);
+        end
+
+        L(1).conj_ind_start = conj_ind  + 1;
+        L(1).conj_ind_end = conj_ind + (size(const_lin_nonlin_ind,2) + 1)/2 - 1;
+
+        for i = 1:size(L(1).conj_ind_end,1)
+            if L(1).conj_ind_end(i) > size(fullmode,1)
+                L(1).conj_ind_end(i) = []; % Check if index out of range.
+            end
+        end
+
+        L(1).change_POD_ind = L(1).conj_ind_start - conj_ind(1);
+        L(1).change_POD_ind(1) = L(1).change_POD_ind(1) ;
+
+    end
+
     function [out, loc] = filter_out_of_range(model, wave_map)
         % this function filters out the mx = nx - kx and mz that are no in
         % the model wavenumber range
@@ -60,8 +116,8 @@ classdef gp
         nx = model(:,1);
         nz = model(:,2);
         
-        min_nx = min(nx);
-        min_nz = min(nz);
+%         min_nx = min(nx);
+%         min_nz = min(nz);
         max_nx = max(nx);
         max_nz = max(nz);
         
@@ -145,6 +201,31 @@ classdef gp
         end
         
     end
+    
+    function [L, fullpod, fullmode, fullmode_pod] = prep_L_matrix(nw_pod, fullmode)
+
+        % Construct pod index before going into loops
+        L = struct();
+        fullmode = repmat(fullmode,nw_pod,1);
+        for i = 1:size(fullmode, 1)
+            L(i).nxnz = fullmode(i,1:2);
+        end
+
+        fullpod = 1:nw_pod;
+        fullpod = repmat(fullpod, size(fullmode,1)/nw_pod,1);
+        fullpod = reshape(fullpod, [size(fullpod,1)*size(fullpod,2) 1]);
+
+        for i = 1:size(fullpod, 1)
+            L(i).n = fullpod(i);
+            L(i).n_seq = 1:nw_pod;
+            L(i).coeff = 0; % And we also allocate memory for linear coefficients.
+        end
+        
+        % Here we also inflate mode map to include POD
+        fullmode_pod = [fullpod fullmode];
+
+    end
+
 
     function N = eval_N(ny, Lx, Lz, phi, n, m, k, nx, nz, mx, mz, pod_wave,...
                         diff_weight, int_weight)
@@ -235,10 +316,11 @@ classdef gp
 
     N = -nonlin/sqrt(Lx*Lz);
 
-end
+    end
 
     function L = eval_L(Re, ny, y, Lx, Lz, phi, n, m, nx, nz, pod_wave, w)
-             
+
+        % phi: wall normal mode from modal reduction     
         % ny: number of y division from cfd
         % nx, nz: stream/span-wise wave number
         % w: integration weights
@@ -251,6 +333,7 @@ end
         if n == m
             kron = 1;
         end
+        
         
         term1 = invRe*((2*pi*nx/Lx)^2 + (2*pi*nz/Lz)^2)*kron;
         
@@ -293,6 +376,78 @@ end
         
         L = - term1 - dphiMdy_integral - phiMN_integral - phiuvMN_integral;
      end
+    
+    function L = eval_L_k(Re, ny, y, Lx, Lz, phi, n, k, nx, nz, pod_wave, dw, w)
+        invRe = 1/Re;
+        
+        term1 = -invRe*((2*pi*nx/Lx)^2 + (2*pi*nz/Lz)^2);
+        
+        I2n = gp.find_wave_number_in_map(nx, nz, pod_wave);
+        I1k = I2n;
+        
+        phi2n = phi(2:3:end,n,I2n);
+        phi1k_conj = conj(phi(1:3:end,k,I1k));
+        
+        term2_int = phi2n.*phi1k_conj;
+        
+        term2 = 0;
+        for i = 1:ny
+            term2 = term2 + term2_int(i)*w(i);
+        end
+        term2 = -term2;
+        
+        term3u_int = y.*phi(1:3:end,n, I2n).*conj(phi(1:3:end,k,I2n));
+        term3v_int = y.*phi(2:3:end,n, I2n).*conj(phi(2:3:end,k,I2n));
+        term3w_int = y.*phi(3:3:end,n, I2n).*conj(phi(3:3:end,k,I2n));
+        
+        term3u = 0;
+        term3v = 0;
+        term3w = 0;
+        for i = 1:ny
+            term3u = term3u + term3u_int(i)*w(i);
+            term3v = term3v + term3v_int(i)*w(i);
+            term3w = term3w + term3w_int(i)*w(i);
+        end
+        
+        term3 = -2*pi*1i*nx*(term3u + term3w + term3v)/Lx;
+        
+        term4_u_n = phi(1:3:end,n,I2n);
+        term4_v_n = phi(2:3:end,n,I2n);
+        term4_w_n = phi(3:3:end,n,I2n);
+        
+        term4_u_k = phi(1:3:end,k,I2n);
+        term4_v_k = phi(2:3:end,k,I2n);
+        term4_w_k = phi(3:3:end,k,I2n);
+        
+        term4_u_diff = math.diff_phi(term4_u_n,dw);
+        term4_v_diff = math.diff_phi(term4_v_n,dw);
+        term4_w_diff = math.diff_phi(term4_w_n,dw);
+        
+        term4_u_k_diff = conj(math.diff_phi(term4_u_k,dw));
+        term4_v_k_diff = conj(math.diff_phi(term4_v_k,dw));
+        term4_w_k_diff = conj(math.diff_phi(term4_w_k,dw));
+        
+        term4_u_int = term4_u_diff.*term4_u_k_diff;
+        term4_v_int = term4_v_diff.*term4_v_k_diff;
+        term4_w_int = term4_w_diff.*term4_w_k_diff;
+        
+        term4_u = 0;
+        term4_v = 0;
+        term4_w = 0;
+        for i = 1:ny
+            term4_u = term4_u + w(i)*term4_u_int(i);
+            term4_v = term4_v + w(i)*term4_v_int(i);
+            term4_w = term4_w + w(i)*term4_w_int(i);
+        end
+        
+        term4 = term4_u + term4_v + term4_w;
+        term4 = -invRe*term4;
+        
+        L = term1 + term2 + term3 + term4;
+    end
+
 
     end
+
+    % please stop. I have ran out of variable name......
 end
