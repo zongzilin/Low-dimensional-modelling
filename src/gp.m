@@ -101,6 +101,16 @@ classdef gp
                    1, 0, 1;-1, 0, 1; ...
                    1, 1, 1;-1,-1, 1; ...
                    1,-1, 1;-1, 1, 1];
+        elseif model_name == 6.1
+            model = [ 0, 0, 1; ...
+                   0, 1, 1; 0,-1, 1; ...
+                   0, 2, 1; 0,-2, 1; ...
+                   1, 0, 1;-1, 0, 1; ...
+                   1, 1, 1;-1,-1, 1; ...
+                   1,-1, 1;-1, 1, 1; ...
+                   1, 0, 2;-1, 0, 2; ...
+                   1, 1, 2;-1,-1, 2; ...
+                   1,-1, 2;-1, 1, 2];                               
         elseif model_name == 9
                 model = [ 0, 0, 1; 0, 1, 1; ...
                    1, 0, 1; 1, 1, 1; ...
@@ -116,8 +126,8 @@ classdef gp
         nx = model(:,1);
         nz = model(:,2);
         
-%         min_nx = min(nx);
-%         min_nz = min(nz);
+        min_nx = min(nx);
+        min_nz = min(nz);
         max_nx = max(nx);
         max_nz = max(nz);
         
@@ -445,7 +455,66 @@ classdef gp
         
         L = term1 + term2 + term3 + term4;
     end
+    
+    function [adot] = eval_adot(t, a, L, N, nw_pod, a0)
+        
+        disp(['t = ', num2str(t)]);
 
+        a_len = size(a0,1);
+
+        adot_lin = zeros(a_len,1);
+        adot_nonlin = adot_lin;
+        
+        % linear coefficient
+        for i_lin = 1:a_len
+
+            for i_pod = 1:nw_pod
+
+                anxnz = a(L(i_lin).pod_pair(i_pod));
+
+                adot_lin(i_lin) = adot_lin(i_lin) + L(i_lin).coeff(i_pod)*anxnz;
+            end
+
+        end
+        
+        % total number of permutations of the PODs
+        perms_length = size(N(1).n_seq,1);
+
+        % nonlinear coefficient
+        for i_nonlin = 1:a_len
+            
+            kxkz_arr = N(i_nonlin).kxkz;
+            kxkz_len = size(kxkz_arr,1);
+
+            for i = 1:kxkz_len               
+                
+                for i_perms = 1:perms_length
+
+                    m_loc = N(i_nonlin).a_mxmz_loc(i, i_perms);
+                    k_loc = N(i_nonlin).a_kxkz_loc(i, i_perms);
+
+                    adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + ...
+                        N(i_nonlin).coeff(i,i_perms)*a(m_loc)*a(k_loc);
+                end
+
+            end
+            
+        end
+
+        adot = adot_lin + adot_nonlin;
+
+        % force conjugation
+        conj_len = size(L(1).conj_ind_start,1);
+        for i_conj = 1:conj_len
+            st = L(1).conj_ind_start(i_conj);
+            ed = L(1).conj_ind_end(i_conj); % ed for end 
+
+            change_pod_ind = L(1).change_POD_ind(i_conj);
+
+            adot(st:ed) = flip(conj(adot(change_pod_ind:st-2)));
+        end
+
+    end
 
     end
 
