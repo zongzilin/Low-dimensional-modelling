@@ -212,6 +212,25 @@ classdef gp
         
     end
     
+    function [size_n_seq, n_seq] = gen_Np_perm(Np)
+
+        % Generate permutation for POD summations
+
+        n_seq = perms(1:Np);
+
+        if Np ~= 1
+        tmp = repmat(1:Np,Np,1)';
+        n_seq = [n_seq; tmp];
+        end
+
+        size_n_seq = size(n_seq,1);
+        if Np == 1
+            n_seq = [1 1];
+            size_n_seq = size(n_seq,1);
+        end
+
+    end
+
     function [L, fullpod, fullmode, fullmode_pod] = prep_L_matrix(nw_pod, fullmode)
 
         % Construct pod index before going into loops
@@ -235,7 +254,6 @@ classdef gp
         fullmode_pod = [fullpod fullmode];
 
     end
-
 
     function N = eval_N(ny, Lx, Lz, phi, n, m, k, nx, nz, mx, mz, pod_wave,...
                         diff_weight, int_weight)
@@ -456,7 +474,110 @@ classdef gp
         L = term1 + term2 + term3 + term4;
     end
     
-    function [adot] = eval_adot(t, a, L, N, nw_pod, a0)
+    function [L, N, fullmode_pod] = get_L_N_struct(Re, Np, phi, lin_nonlin_ind, fullmode, pod_wave)
+
+        % This function encasuplate all processes to compute linear and
+        % nonlinear coefficients
+
+        [x,y,z,nx,ny,nz,Lx,Lz] = modal_decomposition.read_geom;
+        
+        const_lin_nonlin_ind = lin_nonlin_ind; % This line saves the index map to be used in ODE45 (nothing mathematical)
+        
+        w = math.f_chebyshev_int_weight(ny);
+        [~,dw] = math.f_chebdiff(ny, 1);
+                        
+        [L, fullpod, fullmode, fullmode_pod] = gp.prep_L_matrix(Np, fullmode);
+        L = gp.find_POD_pair_conj_index_in_model(L, Np, const_lin_nonlin_ind,fullmode);
+        
+        for i = 1:size(L,2)
+            size_n_seq = size(L(i).n_seq,2);
+            nxnz = L(i).nxnz;
+            for i_pod = 1:size_n_seq
+                L(i).coeff(i_pod) = gp.eval_L_k(Re, ny, y, Lx, Lz, phi, ...
+                    L(i).n, L(i).n_seq(i_pod), nxnz(1), nxnz(2), pod_wave, dw, w);
+            end
+        end
+        
+        N = struct();
+        for i = 1:size(fullpod, 1)
+            N(i).n = fullpod(i); 
+            N(i).coeff = 0;
+        end
+        
+        % Inflate lin_nonlin_ind to match POD number of POD expansions
+        totl_mode = size(lin_nonlin_ind,2);
+        for i = 1:totl_mode*(Np-1)
+            lin_nonlin_ind(i + totl_mode).nxnz = lin_nonlin_ind(i).nxnz;
+            lin_nonlin_ind(i + totl_mode).mxmz = lin_nonlin_ind(i).mxmz;
+            lin_nonlin_ind(i + totl_mode).kxkz = lin_nonlin_ind(i).kxkz;
+        end
+        
+        [size_n_seq, n_seq] = gp.gen_Np_perm(Np);
+        
+        % Assign wavenumbers to struct. And search for mxmz, kxkz index in a
+        for i = 1:size(N,2)
+            N(i).n_seq = n_seq;
+            N(i).nxnz = lin_nonlin_ind(i).nxnz;
+            N(i).mxmz = lin_nonlin_ind(i).mxmz;
+            N(i).kxkz = lin_nonlin_ind(i).kxkz;
+        
+            % search for corresponding mxmz, kxkz index in a (include Np)
+            for i_mxmz = 1:size(N(i).mxmz,1)
+        
+                mxmz = N(i).mxmz(i_mxmz,:);
+        
+                for i_Np = 1:size_n_seq
+                    I = gp.find_wave_number_pod_in_map(N(i).n_seq(i_Np,1), mxmz(1), mxmz(2), fullmode_pod);
+                    N(i).a_mxmz_loc(i_mxmz,i_Np) = I; 
+                end
+        
+            end
+        
+            for i_kxkz = 1:size(N(i).kxkz,1)
+        
+                kxkz = N(i).kxkz(i_kxkz,:);
+        
+                for i_Np = 1:size_n_seq 
+                    I = gp.find_wave_number_pod_in_map(N(i).n_seq(i_Np,2), kxkz(1), kxkz(2), fullmode_pod);
+                    N(i).a_kxkz_loc(i_kxkz,i_Np) = I; 
+                end            
+        
+            end
+        end
+        
+        % Fills in Nonlinear coefficients
+        for i = 1:size(N,2)
+            
+            Np_c = N(i).n;
+            nxnz = N(i).nxnz;
+            kxkz_arr = N(i).kxkz;
+            mxmz_arr = N(i).mxmz;
+        
+            N(i).coeff = zeros(size(kxkz_arr,1), size_n_seq);
+        
+            for i_mxmz = 1:size(mxmz_arr,1)
+                kx = kxkz_arr(i_mxmz,1);
+                kz = kxkz_arr(i_mxmz,2);
+        
+                mx = mxmz_arr(i_mxmz,1);
+                mz = mxmz_arr(i_mxmz,2);
+        
+                for i_local_pod = 1:size_n_seq
+        
+                    m = N(i).n_seq(i_local_pod,1);
+                    k = N(i).n_seq(i_local_pod,2);
+                    N(i).coeff(i_mxmz, i_local_pod) = gp.eval_N_k(y, Lx, Lz, phi, Np_c, m, k, ...
+                                                        nxnz(1),nxnz(2), kx, kz, mx, mz,...
+                                                        pod_wave, dw, w);
+                end
+              
+            end
+        
+        end        
+
+    end
+
+    function adot = eval_adot(t, a, L, N, nw_pod, a0)
         
         disp(['t = ', num2str(t)]);
 
@@ -515,6 +636,18 @@ classdef gp
         end
 
     end
+
+
+
+
+
+
+
+
+
+
+
+
 
     end
 
