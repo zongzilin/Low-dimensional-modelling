@@ -405,10 +405,14 @@ classdef gp
         L = - term1 - dphiMdy_integral - phiMN_integral - phiuvMN_integral;
      end
     
-    function L = eval_L_k(Re, ny, y, Lx, Lz, phi, n, k, nx, nz, pod_wave, dw, w)
+    function [L, lam, diff, production] = eval_L_k(Re, ny, y, Lx, Lz, phi, n, k, nx, nz, pod_wave, dw, w)
         invRe = 1/Re;
         
-        term1 = -invRe*((2*pi*nx/Lx)^2 + (2*pi*nz/Lz)^2);
+        kron = 0;
+        if n == k
+            kron = 1;
+        end
+        term1 = -invRe*((2*pi*nx/Lx)^2 + (2*pi*nz/Lz)^2)*kron;
         
         I2n = gp.find_wave_number_in_map(nx, nz, pod_wave);
         I1k = I2n;
@@ -447,13 +451,13 @@ classdef gp
         term4_v_k = phi(2:3:end,k,I2n);
         term4_w_k = phi(3:3:end,k,I2n);
         
-        term4_u_diff = math.diff_phi(term4_u_n,dw);
-        term4_v_diff = math.diff_phi(term4_v_n,dw);
-        term4_w_diff = math.diff_phi(term4_w_n,dw);
+        term4_u_diff = math.diff_phi(term4_u_n,dw(:,:,1));
+        term4_v_diff = math.diff_phi(term4_v_n,dw(:,:,1));
+        term4_w_diff = math.diff_phi(term4_w_n,dw(:,:,1));
         
-        term4_u_k_diff = conj(math.diff_phi(term4_u_k,dw));
-        term4_v_k_diff = conj(math.diff_phi(term4_v_k,dw));
-        term4_w_k_diff = conj(math.diff_phi(term4_w_k,dw));
+        term4_u_k_diff = math.diff_phi(conj(term4_u_k),dw(:,:,1));
+        term4_v_k_diff = math.diff_phi(conj(term4_v_k),dw(:,:,1));
+        term4_w_k_diff = math.diff_phi(conj(term4_w_k),dw(:,:,1));
         
         term4_u_int = term4_u_diff.*term4_u_k_diff;
         term4_v_int = term4_v_diff.*term4_v_k_diff;
@@ -471,7 +475,83 @@ classdef gp
         term4 = term4_u + term4_v + term4_w;
         term4 = -invRe*term4;
         
+        diff = term1 + term4;
+        production = term2;
+        lam = term3;
+
         L = term1 + term2 + term3 + term4;
+        
+    end
+
+    function [L, lam, diff, prod] = eval_L_m(Re, ny, y, Lx, Lz, phi, n, m, nx, nz, pod_wave, dw, w)
+        invRe = 1/Re;
+        
+        lam = 0;
+        diff = 0;
+        prod = 0;
+
+        index = gp.find_wave_number_in_map(nx, nz, pod_wave);
+
+        phiu_n = phi(1:3:end, n, index);
+        phiv_n = phi(2:3:end, n, index);
+        phiw_n = phi(3:3:end, n, index);
+
+        phiu_m = phi(1:3:end, m, index);
+        phiv_m = phi(2:3:end, m, index);
+        phiw_m = phi(3:3:end, m, index);
+
+        prod_int = conj(phiv_m).*phiu_n;
+
+        for i = 1:ny
+            prod = prod + w(i)*prod_int(i);
+        end
+        prod = -prod;
+
+        % laminar state !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        lam_u_int = y.*conj(phiu_m).*phiu_n;
+        lam_v_int = y.*conj(phiv_m).*phiv_n;
+        lam_w_int = y.*conj(phiw_m).*phiw_n;
+        
+        lam_u = 0;
+        lam_v = 0;
+        lam_w = 0;
+
+        for i = 1:ny
+            lam_u = lam_u + w(i)*lam_u_int(i);
+            lam_v = lam_v + w(i)*lam_v_int(i);
+            lam_w = lam_w + w(i)*lam_w_int(i);
+        end
+        lam = -2*pi*1i*nx*(lam_u + lam_v + lam_w)/Lx;
+
+        
+        % diffusion/viscous
+        kron = 0;
+        if n == m
+            kron = 1;
+        end
+        diff_1 = -invRe*((2*pi*nx/Lx)^2 + (2*pi*nz/Lz)^2)*kron;
+
+        diff_u = 0;
+        diff_v = 0;
+        diff_w = 0;
+
+        diff_u_int = dw(:,:,1)*conj(phiu_m).*(dw(:,:,1)*phiu_n);
+        diff_v_int = dw(:,:,1)*conj(phiv_m).*(dw(:,:,1)*phiv_n);
+        diff_w_int = dw(:,:,1)*conj(phiw_m).*(dw(:,:,1)*phiw_n);
+
+        for i = 1:ny
+            diff_u = diff_u + w(i)*diff_u_int(i);
+            diff_v = diff_v + w(i)*diff_v_int(i);
+            diff_w = diff_w + w(i)*diff_w_int(i);
+        end
+        diff = -invRe*(diff_u + diff_v + diff_w) + diff_1;
+
+        lam = 0;
+%         diff = 0;
+%         prod = 0;
+
+        L = lam + diff + prod;
+        
     end
     
     function [L, N, fullmode_pod] = get_L_N_struct(Re, Np, phi, lin_nonlin_ind, fullmode, pod_wave)
@@ -493,11 +573,17 @@ classdef gp
             size_n_seq = size(L(i).n_seq,2);
             nxnz = L(i).nxnz;
             for i_pod = 1:size_n_seq
-                L(i).coeff(i_pod) = gp.eval_L_k(Re, ny, y, Lx, Lz, phi, ...
+                [L(i).coeff(i_pod), L(i).lam(i_pod), L(i).diff(i_pod), L(i).prod(i_pod)] = ...
+                    gp.eval_L_m(Re, ny, y, Lx, Lz, phi, ...
                     L(i).n, L(i).n_seq(i_pod), nxnz(1), nxnz(2), pod_wave, dw, w);
             end
         end
-        
+
+        % rearrange field (just for aesthetic)
+        L = orderfields(L, [1:5,9,6:8,10:11]);
+        L = orderfields(L, [1:6,10,7:9,11]);
+        L = orderfields(L, [1:7,11,8:10]);
+
         N = struct();
         for i = 1:size(fullpod, 1)
             N(i).n = fullpod(i); 
@@ -514,7 +600,8 @@ classdef gp
         
         [size_n_seq, n_seq] = gp.gen_Np_perm(Np);
         
-        % Assign wavenumbers to struct. And search for mxmz, kxkz index in a
+        % Assign wavenumbers to struct. And search for mxmz, kxkz index in
+        % "a"
         for i = 1:size(N,2)
             N(i).n_seq = n_seq;
             N(i).nxnz = lin_nonlin_ind(i).nxnz;
@@ -637,7 +724,65 @@ classdef gp
 
     end
 
+    function [adot, adot_lin, adot_nonlin] = eval_adot_debug(t, a, L, N, nw_pod, a0)
+        
+        disp(['t = ', num2str(t)]);
 
+        a_len = size(a0,1);
+
+        adot_lin = zeros(a_len,1);
+        adot_nonlin = adot_lin;
+        
+        % linear coefficient
+        for i_lin = 1:a_len
+
+            for i_pod = 1:nw_pod
+
+                anxnz = a(L(i_lin).pod_pair(i_pod));
+
+                adot_lin(i_lin) = adot_lin(i_lin) + L(i_lin).coeff(i_pod)*anxnz;
+            end
+
+        end
+        
+        % total number of permutations of the PODs
+        perms_length = size(N(1).n_seq,1);
+
+        % nonlinear coefficient
+        for i_nonlin = 1:a_len
+            
+            kxkz_arr = N(i_nonlin).kxkz;
+            kxkz_len = size(kxkz_arr,1);
+
+            for i = 1:kxkz_len               
+                
+                for i_perms = 1:perms_length
+
+                    m_loc = N(i_nonlin).a_mxmz_loc(i, i_perms);
+                    k_loc = N(i_nonlin).a_kxkz_loc(i, i_perms);
+
+                    adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + ...
+                        N(i_nonlin).coeff(i,i_perms)*a(m_loc)*a(k_loc);
+                end
+
+            end
+            
+        end
+
+        adot = adot_lin + adot_nonlin;
+
+        % force conjugation
+        conj_len = size(L(1).conj_ind_start,1);
+        for i_conj = 1:conj_len
+            st = L(1).conj_ind_start(i_conj);
+            ed = L(1).conj_ind_end(i_conj); % ed for end 
+
+            change_pod_ind = L(1).change_POD_ind(i_conj);
+
+            adot(st:ed) = flip(conj(adot(change_pod_ind:st-2)));
+        end
+
+    end
 
 
 
