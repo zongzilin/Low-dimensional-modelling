@@ -7,12 +7,10 @@ close all
 addpath('../src');
 addpath('../process/re400');
 
-% load('gp_nx4_nz4_N1_T3000_dt1_time_coeff.mat');
+% load('gp_nx3_nz3_N3_T3000_dt1_time_coeff_m.mat');
 load('gp_trs6_N1_T3000_dt1_time_coeff.mat');
 
-[~,~,~,~,~,~,Lx,Lz] = modal_decomposition.read_geom();
-
-sim_time = size(a_gp,1);
+[x,y,z,nx,ny,nz,Lx,Lz] = modal_decomposition.read_geom();
 
 % Initialise physical flow field
 U = zeros(nx, ny, nz);
@@ -23,7 +21,7 @@ x_len = length(x);
 y_len = length(y);
 z_len = length(z);
 
-i_t = 1;
+i_t = 100;
 sqrtlxlz = 1/sqrt(Lx*Lz);
 a_verify = a_gp(i_t,:);
 
@@ -56,12 +54,19 @@ for i_m = 1:size(fullmode_pod,1)
     end
 end
 
+U = real(U);
+V = real(V);
+W = real(W);
+
 [~,dw] = math.f_chebdiff(y_len, 2);
 w = math.f_chebyshev_int_weight(y_len);
+
+[dudx, dvdx, dwdx] = x_derivatives_spectral(x, y, z, Lx, Lz, a, fullmode_pod, pod_wave, phi);
 
 d2udx2 = x_derivatives2(U, x, y, z);
 d2vdx2 = x_derivatives2(V, x, y, z);
 d2wdx2 = x_derivatives2(W, x, y, z);
+% [d2udx2, d2vdx2, d2wdx2] = x_derivatives_spectral2(x, y, z, Lx, Lz, a, fullmode_pod, pod_wave, phi);
 
 d2udy2 = y_derivatives2(U, x, y, z, dw);
 d2vdy2 = y_derivatives2(V, x, y, z, dw);
@@ -70,10 +75,34 @@ d2wdy2 = y_derivatives2(W, x, y, z, dw);
 d2udz2 = z_derivatives2(U, x, y, z);
 d2vdz2 = z_derivatives2(V, x, y, z);
 d2wdz2 = z_derivatives2(W, x, y, z);
+% [d2udz2, d2vdz2, d2wdz2] = z_derivatives_spectral2(x, y, z, Lx, Lz, a, fullmode_pod, pod_wave, phi);
 
-linear_u = d2udx2 + d2udy2 + d2udz2;
-linear_v = d2vdx2 + d2vdy2 + d2vdz2;
-linear_w = d2wdx2 + d2wdy2 + d2wdz2;
+ydudx = zeros(x_len, y_len, z_len);
+ydvdx = ydudx;
+ydwdx = ydudx;
+
+linear_u = zeros(x_len, y_len, z_len);
+linear_v = zeros(x_len, y_len, z_len);
+linear_w = zeros(x_len, y_len, z_len);
+
+% laminar state
+for i_x = 1:x_len
+    for i_z = 1:z_len
+        for i_y = 1:y_len
+            ydudx(i_x, i_y, i_z) = y(i_y)*dudx(i_x, i_y, i_z);
+            ydvdx(i_x, i_y, i_z) = y(i_y)*dvdx(i_x, i_y, i_z);
+            ydwdx(i_x, i_y, i_z) = y(i_y)*dwdx(i_x, i_y, i_z);
+        end
+    end
+end
+
+% linear_u = (d2udx2 + d2udy2 + d2udz2)/Re - V - ydudx;
+% linear_v = (d2vdx2 + d2vdy2 + d2vdz2)/Re - ydvdx;
+% linear_w = (d2wdx2 + d2wdy2 + d2wdz2)/Re - ydwdx;
+
+linear_u =  (d2udx2 + d2udy2 + d2udz2)/Re - V;
+linear_v =  (d2vdx2 + d2vdy2 + d2vdz2)/Re;
+linear_w =  (d2wdx2 + d2wdy2 + d2wdz2)/Re;
 
 u_fft = fft(fft(linear_u, nx, 1), nz, 3);
 v_fft = fft(fft(linear_v, nx, 1), nz, 3);
@@ -83,7 +112,6 @@ a_out = zeros(1,size(fullmode_pod,1));
 for j = 1:size(fullmode_pod,1)
     [wave_x,wave_z] = modal_decomposition.applyPeriodicity(fullmode_pod(j,2),fullmode_pod(j,3),nx,nz);
     wnxz_phi_index = gp.find_wave_number_in_map(fullmode_pod(j,2), fullmode_pod(j,3), pod_wave);
-    phi_index_out(j) = wnxz_phi_index;
         a = 0;
         a_u = 0;
         a_v = 0;
@@ -104,14 +132,19 @@ end
 
 
 % computes nonlinear coefficients
-[~, adot_lin, adot_nonlin] = gp.eval_adot_debug(1, a_verify', L, N, Np, a_verify');
+[L, N, fullmode_pod] = gp.get_L_N_struct(Re, Np, phi, lin_nonlin_ind, fullmode, pod_wave);
+[adot_vis, adot_lin, adot_nonlin] = gp.eval_adot_debug(1, a_verify', L, N, Np, a_verify');
 
 a_out = sqrt(Lx*Lz)*a_out/(nx*nz);
-a_dns_verify = [-adot_lin'; a_out];
+a_dns_verify = [adot_lin'; a_out]';
 
-plot(a_out,'b-')
+
+plot(a_out,'rs','markersize',15)
 hold on
-plot(-adot_lin,'k-')
+plot(adot_lin,'kx','markersize',15)
+% plot(adot_nonlin,'rx','markersize',15)
+% plot(adot_vis,'bx','markersize',15)
+legend('reconstructed flow','gp projection code linear','gp adot')
 
-
-
+% rms(abs(adot_lin') - abs(a_out))
+[adot_lin'./a_out]'
