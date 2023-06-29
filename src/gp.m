@@ -521,8 +521,8 @@ classdef gp
             lam_v = lam_v + w(i)*lam_v_int(i);
             lam_w = lam_w + w(i)*lam_w_int(i);
         end
-        lam = -2*pi*1i*nx*(lam_u + lam_v + lam_w)/Lx;
-
+        lam = 2*pi*1i*nx*(lam_u + lam_v + lam_w)/Lx;
+       
         
         % diffusion/viscous
         kron = 0;
@@ -546,7 +546,7 @@ classdef gp
         end
         diff = -invRe*(diff_u + diff_v + diff_w) + diff_1;
 
-        lam = 0;
+%         lam = 0;
 %         diff = 0;
 %         prod = 0;
 
