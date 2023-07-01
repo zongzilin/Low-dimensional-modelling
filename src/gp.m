@@ -216,19 +216,46 @@ classdef gp
 
         % Generate permutation for POD summations
 
-        n_seq = perms(1:Np);
+%         n_seq = perms(1:Np);
+% 
+%         if Np ~= 1
+%         tmp = repmat(1:Np,Np,1)';
+%         n_seq = [n_seq; tmp];
+%         end
+% 
+%         size_n_seq = size(n_seq,1);
+%         
+%         if Np == 1
+%             n_seq = [1 1];
+%             size_n_seq = size(n_seq,1);
+%         end
 
-        if Np ~= 1
-        tmp = repmat(1:Np,Np,1)';
-        n_seq = [n_seq; tmp];
-        end
-
-        size_n_seq = size(n_seq,1);
-        if Np == 1
-            n_seq = [1 1];
+            n_seq = perms(1:Np);
+            
+            if Np ~= 1
+                tmp = repmat(1:Np,Np,1)';
+                n_seq = [n_seq; tmp];
+            end
+            
             size_n_seq = size(n_seq,1);
-        end
-
+            
+            n_seq_out(1,:) = n_seq(1,:);
+            for i = 2:size_n_seq
+                if n_seq(i-1,1) ~= n_seq(i,1) || n_seq(i-1,2) ~= n_seq(i,2)
+                    n_seq_out(i,:) = n_seq(i,:);
+                end
+            end
+            
+            n_seq_out( all(~n_seq_out,2), : ) = [];
+            n_seq = n_seq_out;
+            size_n_seq = size(n_seq,1);
+            
+            if Np == 1
+                n_seq = [1 1];
+                size_n_seq = size(n_seq,1);
+            end
+        
+        % this function is a MESS
     end
 
     function [L, fullpod, fullmode, fullmode_pod] = prep_L_matrix(nw_pod, fullmode)
@@ -320,9 +347,12 @@ classdef gp
     phiv_m = phi(2:3:end,m, I_m);
     phiw_m = phi(3:3:end,m, I_m);
 
-    dphi_u = math.diff_phi(phiu_m, diff_weight);
-    dphi_v = math.diff_phi(phiv_m, diff_weight);
-    dphi_w = math.diff_phi(phiw_m, diff_weight);
+%     dphi_u = math.diff_phi(phiu_m, diff_weight);
+%     dphi_v = math.diff_phi(phiv_m, diff_weight);
+%     dphi_w = math.diff_phi(phiw_m, diff_weight);
+    dphi_u = diff_weight(:,:,1)*phiu_m;
+    dphi_v = diff_weight(:,:,1)*phiv_m;
+    dphi_w = diff_weight(:,:,1)*phiw_m;
 
     int_nonlin_u = ((2*pi*1i*mx/Lx)*phiu_k.*phiu_m + ...
                    phiv_k.*dphi_u + (2*pi*1i*mz/Lz)*phiw_k.*phiu_m).*conj(phiu_n);
@@ -441,7 +471,7 @@ classdef gp
             term3w = term3w + term3w_int(i)*w(i);
         end
         
-        term3 = -2*pi*1i*nx*(term3u + term3w + term3v)/Lx;
+        term3 = 2*pi*1i*nx*(term3u + term3w + term3v)/Lx;
         
         term4_u_n = phi(1:3:end,n,I2n);
         term4_v_n = phi(2:3:end,n,I2n);
@@ -521,6 +551,7 @@ classdef gp
             lam_v = lam_v + w(i)*lam_v_int(i);
             lam_w = lam_w + w(i)*lam_w_int(i);
         end
+        % !!!!!!!!!!!!!!!!!!!
         lam = 2*pi*1i*nx*(lam_u + lam_v + lam_w)/Lx;
        
         
@@ -545,10 +576,6 @@ classdef gp
             diff_w = diff_w + w(i)*diff_w_int(i);
         end
         diff = -invRe*(diff_u + diff_v + diff_w) + diff_1;
-
-%         lam = 0;
-%         diff = 0;
-%         prod = 0;
 
         L = lam + diff + prod;
         
@@ -663,7 +690,38 @@ classdef gp
         end        
 
     end
+    
+    function [L, fullmode_pod] = get_L_struct(Re, Np, phi, lin_nonlin_ind, fullmode, pod_wave)
 
+    % This function encasuplate all processes to compute linear and
+    % nonlinear coefficients
+
+        [x,y,z,nx,ny,nz,Lx,Lz] = modal_decomposition.read_geom;
+        
+        const_lin_nonlin_ind = lin_nonlin_ind; % This line saves the index map to be used in ODE45 (nothing mathematical)
+        
+        w = math.f_chebyshev_int_weight(ny);
+        [~,dw] = math.f_chebdiff(ny, 1);
+                        
+        [L, fullpod, fullmode, fullmode_pod] = gp.prep_L_matrix(Np, fullmode);
+        L = gp.find_POD_pair_conj_index_in_model(L, Np, const_lin_nonlin_ind,fullmode);
+        
+        for i = 1:size(L,2)
+            size_n_seq = size(L(i).n_seq,2);
+            nxnz = L(i).nxnz;
+            for i_pod = 1:size_n_seq
+                [L(i).coeff(i_pod), L(i).lam(i_pod), L(i).diff(i_pod), L(i).prod(i_pod)] = ...
+                    gp.eval_L_m(Re, ny, y, Lx, Lz, phi, ...
+                    L(i).n, L(i).n_seq(i_pod), nxnz(1), nxnz(2), pod_wave, dw, w);
+            end
+        end
+    
+        % rearrange field (just for aesthetic)
+        L = orderfields(L, [1:5,9,6:8,10:11]);
+        L = orderfields(L, [1:6,10,7:9,11]);
+        L = orderfields(L, [1:7,11,8:10]);
+    end
+    
     function adot = eval_adot(t, a, L, N, nw_pod, a0)
         
         disp(['t = ', num2str(t)]);
