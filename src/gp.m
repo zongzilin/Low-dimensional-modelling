@@ -2,6 +2,10 @@ classdef gp
     methods(Static)
     
     function I = find_wave_number_in_map(nx, nz, pod_wave)
+
+        % This function finds nx (streamwise) and nz (spanwise) wavenumber
+        % from a map matrix of size n-by-2. Column 1: all nx
+        % Column 2: all nz
     
         r = size(pod_wave,1);
         
@@ -18,6 +22,10 @@ classdef gp
     end
 
     function I = find_wave_number_pod_in_map(np, nx, nz, pod_wave)
+        % This function finds nx (streamwise) and nz (spanwise) wavenumber
+        % from a map matrix of size n-by-3       
+        % pod_wave: column 1: all pod numbers
+        %           column 2&3: all nx and nz wavenumbers
     
         r = size(pod_wave,1);
         
@@ -36,6 +44,23 @@ classdef gp
     function L = find_POD_pair_conj_index_in_model(L, nw_pod, const_lin_nonlin_ind,fullmode)
 
         % Nothing mathematical. Just for the ease of calculation
+        % This function acts to find the the index to force conjugation in
+        % model. 
+        % Input: L                    ---- struct of initial L  
+        %        nw_pod               ---- number of pod for the current model
+        %        const_lin_nonlin_ind ---- this struct contains all pairs of linear
+        %                                  and nonlinear wavenumber interactions.
+        %                                  The prefix " const " signifies
+        %                                  that this struct will not be
+        %                                  modified throughout the code
+        %        fullmode             ---- this is a n-by-2 matrix where
+        %                                  first column: all nx wavenumber
+        %                                  second column: all nz wavenumber
+        % Output: L                   ---- the same input L but the indexes
+        %                                  to force conjugation is written
+        %                                  at the last field as
+        %                                  "conj_ind_start" and
+        %                                  "conj_ind_end"
 
         for i = 1:size(fullmode,1)
         c_nxnz = L(i).nxnz;
@@ -74,8 +99,17 @@ classdef gp
     end
 
     function [out, loc] = filter_out_of_range(model, wave_map)
-        % this function filters out the mx = nx - kx and mz that are no in
-        % the model wavenumber range
+
+        % This function filters out the nonlinear interaction of mx = nx - kx and mz that 
+        % are not in the model wavenumber range
+        % Inputs: model    ---- An n-by-2 matrix with first column: nx
+        %                       second column: nz
+        %         wave_map ---- A n-by-2 matrix from the output of function
+        %                       load_model()
+        % Outputs: out ---- A 2 column matrix of a filtered wavenumber map.
+        %                   first column: nx
+        %                   second column: nz
+        %          loc ---- The indexes of filtered wavenumbers
     
         [r_wave, ~] = size(wave_map);
     
@@ -93,6 +127,21 @@ classdef gp
     end    
     
     function [lin_nonlin_ind, fullmode, model] = load_predefined_model(model_name)
+        
+        % This function hard codes the ROM from Smith(2005). This function
+        % also contains a mini version of function filter_out_of_range()
+        %
+        % Inputs: model_name ---- A number that specify the model name as
+        %                         in Smith(2005)
+        % Outputs: lin_nonlin_ind ---- A full struct with all the possible
+        %                              nx nz, kx kz, mx mz interaction
+        %          fullmode       ---- All the wavenumber specified by
+        %                              Smith(2005)
+        %                              Column 1&2: nx&nz
+        %          model          ---- All the wavenumber and pod specified
+        %                              by Smith(2005)
+        %                              Column 1&2: nx&nz
+        %                              Column 3  : pods
 
         if model_name == 6
             model = [ 0, 0, 1; ...
@@ -169,6 +218,15 @@ classdef gp
     
     function [lin_nonlin_ind, fullmode] = load_model(nx, nz)
 
+        % This function loads a generic model with nx from -nx to +nx and
+        % -nz to +nz
+        % Inputs: nx ---- streamwise wavenumber range
+        %         nz ---- spanwise wavenumber range
+        % Outputs: lin_nonlin_ind ---- As specified in
+        %                              load_predefined_model()
+        %          fullmode       ---- As specified in
+        %                              load_predefined_model()
+
         max_nx = nx;
         min_nx = -nx;
 
@@ -215,20 +273,10 @@ classdef gp
     function [size_n_seq, n_seq] = gen_Np_perm(Np)
 
         % Generate permutation for POD summations
-
-%         n_seq = perms(1:Np);
-% 
-%         if Np ~= 1
-%         tmp = repmat(1:Np,Np,1)';
-%         n_seq = [n_seq; tmp];
-%         end
-% 
-%         size_n_seq = size(n_seq,1);
-%         
-%         if Np == 1
-%             n_seq = [1 1];
-%             size_n_seq = size(n_seq,1);
-%         end
+        % Inputs: Np ---- No. of PODs in the current model
+        % Outputs: n_seq      ---- a sequence of all possible 1:Np permutations
+        %          size_n_seq ---- The number of permutations (i.e
+        %                          length(n_seq))
 
             n_seq = perms(1:Np);
             
@@ -259,6 +307,19 @@ classdef gp
     end
 
     function [L, fullpod, fullmode, fullmode_pod] = prep_L_matrix(nw_pod, fullmode)
+        
+        % This function generates the complete linear coefficient matrix
+        % before finally going into the ode timestepping
+        % Inputs: nw_pod   ---- No. of PODs in the current model
+        %         fullmode ---- An 2 column matrix with 
+        %                       first column:  nx
+        %                       second coulmn: nz
+        % Outputs: L            ---- A complete linear coefficient struct with all required info to ode
+        %                            timestep
+        %          fullmode     ---- As defined above
+        %          fullmode_pod ---- A 3 column matrix
+        %                            Column 1&2: nx and nz
+        %                            Column 3: all pods numbers
 
         % Construct pod index before going into loops
         L = struct();
@@ -281,52 +342,6 @@ classdef gp
         fullmode_pod = [fullpod fullmode];
 
     end
-
-    function N = eval_N(ny, Lx, Lz, phi, n, m, k, nx, nz, mx, mz, pod_wave,...
-                        diff_weight, int_weight)
-        
-        kx = nx - mx;
-        kz = nz - mz;
-    
-        In = galerkin_projection.find_wave_number_in_map(nx, nz, pod_wave);
-        Im = galerkin_projection.find_wave_number_in_map(mx, mz, pod_wave);
-        Ik = galerkin_projection.find_wave_number_in_map(kx, kz, pod_wave);
-        
-        phinU = phi(1:3:end, n, In);
-        phinV = phi(2:3:end, n, In);
-        phinW = phi(3:3:end, n, In);
-    
-        phikU = phi(1:3:end, k, Ik);
-        phikV = phi(2:3:end, k, Ik);
-        phikW = phi(3:3:end, k, Ik);
-    
-        phimU = phi(1:3:end, m, Im);
-        phimV = phi(2:3:end, m, Im);
-        phimW = phi(3:3:end, m, Im);
-        
-        dphimUdy = math.diff_phi(phimU, diff_weight);
-        dphimVdy = math.diff_phi(phimV, diff_weight);
-        dphimWdy = math.diff_phi(phimW, diff_weight);
-        
-        nonlinU = ((2*pi*1i*mx/Lx).*phikU.*phimU + phikV.*dphimUdy + ...
-                   (2*pi*1i*mz/Lz).*phikW.*phimU).*conj(phinU);
-        nonlinV = ((2*pi*1i*mx/Lx).*phikU.*phimV + phikV.*dphimVdy + ...
-                   (2*pi*1i*mz/Lz).*phikW.*phimV).*conj(phinV);
-        nonlinW = ((2*pi*1i*mx/Lx).*phikU.*phimW + phikV.*dphimWdy + ...
-                   (2*pi*1i*mz/Lz).*phikW.*phimW).*conj(phinW);
-        
-        nU = 0;
-        nV = 0;
-        nW = 0;
-        for i = 1:ny
-            nU = nU + int_weight(i)*nonlinU(i);
-            nV = nV + int_weight(i)*nonlinV(i);
-            nW = nW + int_weight(i)*nonlinW(i);
-        end
-    
-        N = nU + nV + nW;
-        N = -N/sqrt(Lx*Lz);
-    end    
 
     function N = eval_N_k(y, Lx, Lz, phi, n, m, k, nx, nz, kx, kz, mx, mz, pod_wave,...
                     diff_weight, int_weight)
@@ -377,6 +392,8 @@ classdef gp
     end
 
     function L = eval_L(Re, ny, y, Lx, Lz, phi, n, m, nx, nz, pod_wave, w)
+        
+        %%%%%%%%%%%%%%%%%%%%%% DEPRECATED %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         % phi: wall normal mode from modal reduction     
         % ny: number of y division from cfd
@@ -436,6 +453,9 @@ classdef gp
      end
     
     function [L, lam, diff, production] = eval_L_k(Re, ny, y, Lx, Lz, phi, n, k, nx, nz, pod_wave, dw, w)
+
+
+        
         invRe = 1/Re;
         
         kron = 0;
