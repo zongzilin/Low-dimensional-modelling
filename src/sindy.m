@@ -54,7 +54,31 @@ classdef sindy
             end
 
         end 
-
+        
+        function [D, fullmode_pod] = get_D_struct(Np, phi, lin_nonlin_ind, fullmode, pod_wave)
+            
+            [~,~,~,~,ny,~,Lx,Lz] = modal_decomposition.read_geom;
+            
+            const_lin_nonlin_ind = lin_nonlin_ind; % This line saves the index map to be used in ODE45 (nothing mathematical)
+            
+            w = math.f_chebyshev_int_weight(ny);
+            [~,dw] = math.f_chebdiff(ny, 1);
+                            
+            [D, ~, fullmode, fullmode_pod] = gp.prep_L_matrix(Np, fullmode);
+            D = gp.find_POD_pair_conj_index_in_model(D, Np, const_lin_nonlin_ind,fullmode);
+            
+            for i = 1:size(D,2)
+                size_n_seq = size(D(i).n_seq,2);
+                nxnz = D(i).nxnz;
+                for i_pod = 1:size_n_seq
+                    nx = nxnz(1);
+                    nz = nxnz(2);
+                    D(i).coeff(i_pod) = sindy.eval_D(ny, Lx, Lz, phi, D(i).n, D(i).n_seq(i_pod), ...
+                        nx, nz, pod_wave, dw, w);
+                end
+            end
+        
+        end
 
     end
 end
