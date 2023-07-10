@@ -1,6 +1,6 @@
-# Low Dimensional Modelling
+# Low Dimensional Modelling eddy viscosity closure
 
-This code performs modal reduction and Galerkin projection of plane couette flow (PCF)
+This code performs modal reduction and Galerkin projection of plane couette flow (PCF). This code has many redundant variables.
 
 ## File prefixes
 - t_: test file/scripts 
