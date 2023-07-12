@@ -79,6 +79,56 @@ classdef sindy
             end
         
         end
+        
+        function [T, t_I] = residual_galerkin_R(Np, L, N, a_dns, fullmode_pod,pod_wave, dns_time,train_time_start, train_time_end)
+            
+            train_time = train_time_end - train_time_start;
+            
+            % re-arrange a_dns
+            a_dns_sindy = zeros(dns_time, size(fullmode_pod,1));
+            for i = 1:size(fullmode_pod,1)
+                nxnz = fullmode_pod(i,2:3);
+                Np = fullmode_pod(i,1);
+            
+                I = gp.find_wave_number_in_map(nxnz(1), nxnz(2), pod_wave);
+            
+                a_dns_sindy(:,i) = a_dns(:, Np, I);
+            
+            end
+            
+            % added 1 to include train_time_start to train_time_end
+            T = zeros(train_time+1, size(fullmode_pod,1));
+            for i_t = 1:train_time+1
+                    ind = train_time_start + i_t - 1;
+                    T(i_t, :) = gp.eval_adot(i_t, a_dns_sindy(ind,:), L, N, Np);      
+                    t_I(i_t) = ind;
+            end
+        
+        end
+
+        function [theta, t_I] = library_galerkin_R(e, a_dns, D, pod_wave,ts,te)
+            
+            [time, ~, ~] = size(a_dns(ts:te,:,:));
+            
+            theta = ones(time, size(D, 2));
+        
+            % re-arrange a_dns into theta
+            for i_t = 1:time
+                ind = ts + i_t - 1;
+                for i = 1:size(D,2)
+                    nxnz = D(i).nxnz;
+                    Np = D(i).n;
+            
+                    I = gp.find_wave_number_in_map(nxnz(1),nxnz(2),pod_wave);
+                    
+                    % e in this case is abs(a_{0,0}^1)
+        
+                    theta(i_t, i) = theta(i_t,i)*a_dns(ind, Np, I)*D(i).coeff(Np)*e(ind);
+                end
+                t_I(i_t) = ind;
+            end
+            
+         end        
 
     end
 end
