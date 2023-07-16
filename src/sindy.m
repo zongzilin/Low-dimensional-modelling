@@ -1,7 +1,27 @@
 classdef sindy
     methods(Static)
+        
+        function a_dot_dns = eval_adot_spline(a_dns)
 
+            [dns_time, n_pod, n_wave] = size(a_dns);
+            
+            a_dot_dns = zeros(dns_time, n_pod, n_wave);            
+            
+            for i_diff = 1:n_wave
+                for i_pod = 1:n_pod
+                    a_dns_re = spline(1:dns_time, real(a_dns(1:dns_time,i_pod,i_diff)));
+                    a_dns_im = spline(1:dns_time, imag(a_dns(1:dns_time,i_pod,i_diff)));
+                    
+                    a_dot_dns_re = fnder(a_dns_re, 1);
+                    a_dot_dns_imag = fnder(a_dns_im,1);
+            
+                    a_dot_dns(:,i_pod, i_diff) = ppval(a_dot_dns_re, 1:dns_time) + ...
+                                                 1i*ppval(a_dot_dns_imag, 1:dns_time);
+                end
+            end
 
+        end
+        
         function D = eval_D(ny, Lx, Lz, phi, n, m, nx, nz, pod_wave, dw, w)
 
             % This function evaluates the eddy viscousity model          
@@ -80,12 +100,14 @@ classdef sindy
         
         end
         
-        function [T, t_I] = residual_galerkin_R(Np, L, N, a_dns, fullmode_pod,pod_wave, dns_time,train_time_start, train_time_end)
+        function T = residual_galerkin_R(Np, L, N, a_dns, a_dns_dot, fullmode_pod,pod_wave)
             
-            train_time = train_time_end - train_time_start;
-            
+            % size of input a 
+            [a_t, ~, ~] = size(a_dns);
+
             % re-arrange a_dns
-            a_dns_sindy = zeros(dns_time, size(fullmode_pod,1));
+            a_dns_sindy = zeros(a_t, size(fullmode_pod,1));
+            a_dns_dot_sindy = a_dns_sindy;
             for i = 1:size(fullmode_pod,1)
                 nxnz = fullmode_pod(i,2:3);
                 Np = fullmode_pod(i,1);
@@ -93,42 +115,142 @@ classdef sindy
                 I = gp.find_wave_number_in_map(nxnz(1), nxnz(2), pod_wave);
             
                 a_dns_sindy(:,i) = a_dns(:, Np, I);
+                a_dns_dot_sindy(:,i) = a_dns_dot(:,Np,I);
             
             end
             
-            % added 1 to include train_time_start to train_time_end
-            T = zeros(train_time+1, size(fullmode_pod,1));
-            for i_t = 1:train_time+1
-                    ind = train_time_start + i_t - 1;
-                    T(i_t, :) = gp.eval_adot(i_t, a_dns_sindy(ind,:), L, N, Np);      
-                    t_I(i_t) = ind;
+            T = zeros(a_t, size(fullmode_pod,1));
+            for i_t = 1:a_t
+                    T(i_t, :) =  a_dns_dot_sindy(i_t,:)' - gp.eval_adot(i_t, a_dns_sindy(i_t,:), L, N, Np);      
             end
         
         end
 
-        function [theta, t_I] = library_galerkin_R(e, a_dns, D, pod_wave,ts,te)
+        function theta = library_galerkin_R(e, a_dns, D, pod_wave)
             
-            [time, ~, ~] = size(a_dns(ts:te,:,:));
+            [time, ~, ~] = size(a_dns);
             
             theta = ones(time, size(D, 2));
         
             % re-arrange a_dns into theta
             for i_t = 1:time
-                ind = ts + i_t - 1;
                 for i = 1:size(D,2)
                     nxnz = D(i).nxnz;
                     Np = D(i).n;
             
                     I = gp.find_wave_number_in_map(nxnz(1),nxnz(2),pod_wave);
-                    
-                    % e in this case is abs(a_{0,0}^1)
-        
-                    theta(i_t, i) = theta(i_t,i)*a_dns(ind, Np, I)*D(i).coeff(Np)*e(ind);
+                            
+                    theta(i_t, i) = a_dns(i_t, Np, I)*D(i).coeff(Np)*e(i_t);
                 end
-                t_I(i_t) = ind;
             end
             
          end        
+        
+        function Xi = sindy_solve(dof, lambda, k, Xdot, theta)
+
+            % SINDY BY S.BRUNTON
+
+                Xi = theta\Xdot;
+            
+                % dof : system degree of freedom
+                for iter = 1:k
+                    smallinds = (abs(Xi)<lambda);
+                    Xi(smallinds) = 0;
+                    for i = 1:dof
+                        biginds = ~smallinds(:,i);
+            %             biginds = ~smallinds(i)
+                        Xi(biginds, i) = theta(:,biginds)\Xdot(:,i);
+                    end
+                end
+            
+            end
+
+        function adot = eval_adot_galerkin_R(t, a, L, N, D, c, nw_pod)
+            
+            disp(['t = ', num2str(t)]);
+    
+            a_len = size(L,2);
+    
+            adot_lin = zeros(a_len,1);
+            adot_nonlin = adot_lin;
+            adot_eddy_visc = adot_lin;
+    
+            % total number of permutations of the PODs
+            perms_length = size(N(1).n_seq,1);        
+            
+            % linear evaluation
+            for i_lin = 1:a_len
+    
+                for i_pod = 1:nw_pod
+    
+                    anxnz = a(L(i_lin).pod_pair(i_pod));
+    
+                    adot_lin(i_lin) = adot_lin(i_lin) + L(i_lin).coeff(i_pod)*anxnz;
+                end
+    
+            
+            
+    
+                % nonlinear evaluation
+    
+                i_nonlin = i_lin;
+                
+                kxkz_arr = N(i_nonlin).kxkz;
+                kxkz_len = size(kxkz_arr,1);
+    
+                for i = 1:kxkz_len               
+                    
+                    for i_perms = 1:perms_length
+    
+                        m_loc = N(i_nonlin).a_mxmz_loc(i, i_perms);
+                        k_loc = N(i_nonlin).a_kxkz_loc(i, i_perms);
+    
+                        adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + ...
+                            N(i_nonlin).coeff(i,i_perms)*a(m_loc)*a(k_loc);
+                    end
+    
+                end
+
+                
+                % eddy viscousity evaluation (Galerkin-R)
+                i_visc = i_lin;
+                for i_pod_visc = 1:nw_pod
+
+                    anxnz_visc = a(D(i_visc).pod_pair(i_pod));
+                    adot_eddy_visc(i_visc) = adot_eddy_visc(i_visc) + D(i_visc).coeff(i_pod_visc)*anxnz_visc;
+
+                end
+
+                % fills in e(t) and c
+                adot_eddy_visc(i_visc) = adot_eddy_visc(i_visc).*c(i_visc);
+                
+                e = a'*a;
+                e = sqrt(e);
+%                 e = abs(a(25));
+
+                adot_eddy_visc(i_visc) = e.*adot_eddy_visc(i_visc);
+
+                
+                
+            end
+
+
+    
+            adot = adot_lin + adot_nonlin + adot_eddy_visc;
+    
+            % force conjugation
+            conj_len = size(L(1).conj_ind_start,1);
+            for i_conj = 1:conj_len
+                st = L(1).conj_ind_start(i_conj);
+                ed = L(1).conj_ind_end(i_conj); % ed for end 
+    
+                change_pod_ind = L(1).change_POD_ind(i_conj);
+    
+                adot(st:ed) = flip(conj(adot(change_pod_ind:st-2)));
+            end
+    
+        end
+
 
     end
 end
