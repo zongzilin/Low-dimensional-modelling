@@ -28,6 +28,9 @@ classdef post
                 I = gp.find_wave_number_in_map(nxnz(1), nxnz(2), pod_wave);
             
                 u_fluc = u_fluc + mean(real(a(:,i)).^2 + imag(a(:,i)).^2).*phi(1:3:end,Np,I).*conj(phi(1:3:end,Np,I))/(Lx*Lz);    
+                v_fluc = v_fluc + mean(real(a(:,i)).^2 + imag(a(:,i)).^2).*phi(2:3:end,Np,I).*conj(phi(2:3:end,Np,I))/(Lx*Lz);   
+                w_fluc = w_fluc + mean(real(a(:,i)).^2 + imag(a(:,i)).^2).*phi(3:3:end,Np,I).*conj(phi(3:3:end,Np,I))/(Lx*Lz);   
+
             end
             
             u = real(abs(u_fluc));      
@@ -35,7 +38,7 @@ classdef post
             w = real(abs(w_fluc));
         end        
         
-        function [M,time] = modal_energy(data_set_string)
+        function [M,time] = modal_energy_from_file(data_set_string)
 
             load(data_set_string);
             
@@ -69,6 +72,34 @@ classdef post
     
             end
         
+        function M = modal_energy(a, Np, L, Lx, Lz)
+            
+            % get size of a_gp
+            [time, mode_count] = size(a);
+            
+            % modal energy 
+            M = zeros(time, mode_count/Np);
+            
+            n_seq_len = size(L(1).n_seq,2);
+            
+            
+            for i_t = 1:time
+            
+                for i_pod = 1:mode_count/Np
+            
+                    for i_n_seq = 1:n_seq_len
+                        M(i_t,i_pod) = M(i_t, i_pod) + abs(a(i_t,L(i_pod).pod_pair(i_n_seq)));
+                    end
+            
+                end
+            
+            
+            end
+            
+            M = M/sqrt(Lx*Lz);
+
+
+        end
 
         function [u, v, w, x, y, z] = flow_reconstruction(data_set_string)
 
