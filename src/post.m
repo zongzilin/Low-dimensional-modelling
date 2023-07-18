@@ -154,6 +154,43 @@ classdef post
             v = real(v_fluc);
             w = real(w_fluc);
         end
+        
+        function c = xcorrelation(t, M_nxnz, M_mxmz, tau)
+    
+        total_time = size(t,1);
+        
+        M_nxnz_mean = mean(M_nxnz);
+        M_mxmz_mean = mean(M_mxmz);
+        
+        M_tilde_nxnz = M_nxnz - M_nxnz_mean;
+        M_tilde_mxmz = M_mxmz - M_mxmz_mean;
+        
+        % M_tilde_nxnz_rms = sqrt(mean(M_tilde_nxnz(tau + 1:total_time - tau).^2));
+        % M_tilde_mxmz_rms = sqrt(mean(M_tilde_mxmz(tau + 1:total_time - tau).^2));
+        if tau >= 0
+            M_tilde_nxnz_rms = sqrt(mean(M_tilde_nxnz(1:total_time-tau).^2));
+            M_tilde_mxmz_rms = sqrt(mean(M_tilde_mxmz(1:total_time-tau).^2));
+        elseif tau < 0
+            M_tilde_nxnz_rms = sqrt(mean(M_tilde_nxnz(1:total_time+tau).^2));
+            M_tilde_mxmz_rms = sqrt(mean(M_tilde_mxmz(1:total_time+tau).^2));
+        end
+        
+        i = 1;
+        if tau >= 0
+            for i_t = 1:total_time-tau
+                c_temp(i) = M_tilde_nxnz(i_t + tau)*M_tilde_mxmz(i_t);
+                i = i + 1;
+            end
+        elseif tau < 0
+            for i_t = abs(tau)+1:total_time
+                c_temp(i) = M_tilde_nxnz(i_t+tau)*M_tilde_mxmz(i_t);
+                i = i + 1;
+            end
+        end
+        
+        c = mean(c_temp)/M_tilde_nxnz_rms/M_tilde_mxmz_rms;
+    
+    end
 
     end
 end
