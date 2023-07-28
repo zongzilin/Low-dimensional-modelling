@@ -7,6 +7,8 @@ classdef sindy
             
             a_dot_dns = zeros(dns_time, n_pod, n_wave);            
             
+            disp('Calculating adot from dns')
+
             for i_diff = 1:n_wave
                 for i_pod = 1:n_pod
                     a_dns_re = spline(1:dns_time, real(a_dns(1:dns_time,i_pod,i_diff)));
@@ -216,7 +218,7 @@ classdef sindy
                 i_visc = i_lin;
                 for i_pod_visc = 1:nw_pod
 
-                    anxnz_visc = a(D(i_visc).pod_pair(i_pod));
+                    anxnz_visc = a(D(i_visc).pod_pair(i_pod_visc));
                     adot_eddy_visc(i_visc) = adot_eddy_visc(i_visc) + D(i_visc).coeff(i_pod_visc)*anxnz_visc;
 
                 end
@@ -224,9 +226,7 @@ classdef sindy
                 % fills in e(t) and c
                 adot_eddy_visc(i_visc) = adot_eddy_visc(i_visc).*c(i_visc);
                 
-                e = a'*a;
-                e = sqrt(e);
-%                 e = abs(a(25));
+                e = abs(a(25));
 
                 adot_eddy_visc(i_visc) = e.*adot_eddy_visc(i_visc);
 
