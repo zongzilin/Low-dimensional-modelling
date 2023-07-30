@@ -58,7 +58,7 @@ classdef post
                 for i_pod = 1:mode_count/Np
             
                     for i_n_seq = 1:n_seq_len
-                        M(i_t,i_pod) = M(i_t, i_pod) + abs(a_gp(i_t,L(i_pod).pod_pair(i_n_seq)));
+                        M(i_t,i_pod) = M(i_t, i_pod) + abs(a_gp(i_t,L(i_pod).pod_pair(i_n_seq))^2);
                     end
             
                 end
@@ -66,7 +66,7 @@ classdef post
             
             end
             
-            M = M/sqrt(Lx*Lz);
+            M = M/sqrt(Lx*Lz)/2;
 
             time = 1:time;
     
@@ -88,7 +88,7 @@ classdef post
                 for i_pod = 1:mode_count/Np
             
                     for i_n_seq = 1:n_seq_len
-                        M(i_t,i_pod) = M(i_t, i_pod) + abs(a(i_t,L(i_pod).pod_pair(i_n_seq)));
+                        M(i_t,i_pod) = M(i_t, i_pod) + abs(a(i_t,L(i_pod).pod_pair(i_n_seq))).^2;
                     end
             
                 end
@@ -96,7 +96,7 @@ classdef post
             
             end
             
-            M = M/sqrt(Lx*Lz);
+            M = sqrt(M)/sqrt(Lx*Lz);
 
 
         end
@@ -165,8 +165,7 @@ classdef post
         M_tilde_nxnz = M_nxnz - M_nxnz_mean;
         M_tilde_mxmz = M_mxmz - M_mxmz_mean;
         
-        % M_tilde_nxnz_rms = sqrt(mean(M_tilde_nxnz(tau + 1:total_time - tau).^2));
-        % M_tilde_mxmz_rms = sqrt(mean(M_tilde_mxmz(tau + 1:total_time - tau).^2));
+
         if tau >= 0
             M_tilde_nxnz_rms = sqrt(mean(M_tilde_nxnz(1:total_time-tau).^2));
             M_tilde_mxmz_rms = sqrt(mean(M_tilde_mxmz(1:total_time-tau).^2));
@@ -176,6 +175,7 @@ classdef post
         end
         
         i = 1;
+        c_temp = 0;
         if tau >= 0
             for i_t = 1:total_time-tau
                 c_temp(i) = M_tilde_nxnz(i_t + tau)*M_tilde_mxmz(i_t);
@@ -191,6 +191,27 @@ classdef post
         c = mean(c_temp)/M_tilde_nxnz_rms/M_tilde_mxmz_rms;
     
     end
+        
+        function c = xcorr_from_file(data_set_string, nx, nz, mx, mz, tau)
+            
+            load(data_set_string,'a','Np','L','fullmode','t_a');
 
+            [x,y,z,~,ylen,~,Lx,Lz] = modal_decomposition.read_geom;  
+            
+            M = post.modal_energy(a, Np, L, Lx, Lz);
+                        
+            I_nxnz = gp.find_wave_number_in_map(nx, nz, fullmode);
+            I_mxmz = gp.find_wave_number_in_map(mx, mz, fullmode);
+            
+            M_nxnz = M(:,I_nxnz);
+            M_mxmz = M(:,I_mxmz);
+            
+            i = 1;
+            for i_tau = -tau:tau
+                c(i) = post.xcorrelation(t_a, M_nxnz, M_mxmz, i_tau);
+                i = i + 1;
+            end
+
+        end
     end
 end
