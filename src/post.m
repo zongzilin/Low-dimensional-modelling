@@ -213,5 +213,23 @@ classdef post
             end
 
         end
+   
+        function plot_trajectory_config(fp)
+
+
+                set(gcf,'Position',[100 1700 900 150])
+                
+                fp.LineWidth = 1.5;
+                
+                
+                a = get(gca,'XTickLabel');
+                set(gca,'XTickLabel',a,'fontsize',15)
+                
+                set(gca,'TickLabelInterpreter','latex')  
+                set(gca,'Xlabel')
+
+        end
+    
+    
     end
 end
