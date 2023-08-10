@@ -226,46 +226,50 @@ classdef gp
         %                              load_predefined_model()
         %          fullmode       ---- As specified in
         %                              load_predefined_model()
-
-        max_nx = nx;
-        min_nx = -nx;
-
-        max_nz = nz;
-        min_nz = -nz;
-
-        range_nx = -nx:nx;
-        range_nz = -nz:nz;
-
-        % map_kxkz = model(:,1:2);
-        ind = 1;
-        for i = min_nx:max_nx
-            for j = min_nz:max_nz
-                fullmode(ind,1) = i;
-                fullmode(ind,2) = j;
+        switch nargin
+            case 2
+                max_nx = nx;
+                min_nx = -nx;
         
-                ind = ind + 1;
-            end
-        end
-        map_kxkz = fullmode;
-
-        map_mxmz = zeros([size(map_kxkz),size(map_kxkz,1)]);
-        for i = 1:size(map_kxkz,1)
-            map_mxmz(:,:,i) = map_kxkz(i,:) - map_kxkz;
-        end
+                max_nz = nz;
+                min_nz = -nz;
         
-        % linear and nonlinear operator indexing
-        lin_nonlin_ind = struct();
-        for i = 1:size(map_kxkz,1)
-            lin_nonlin_ind(i).nxnz(1,:) = map_kxkz(i,:);
-            
-            % filter out wavenumber not in model
-            a = gp.filter_out_of_range(map_kxkz, map_mxmz(:,:,i));
-            
-            lin_nonlin_ind(i).mxmz = a;
-
-            % recover kxkz
-            lin_nonlin_ind(i).kxkz = lin_nonlin_ind(i).nxnz(1,:) - ...
-                                        lin_nonlin_ind(i).mxmz;
+                range_nx = -nx:nx;
+                range_nz = -nz:nz;
+        
+                % map_kxkz = model(:,1:2);
+                ind = 1;
+                for i = min_nx:max_nx
+                    for j = min_nz:max_nz
+                        fullmode(ind,1) = i;
+                        fullmode(ind,2) = j;
+                
+                        ind = ind + 1;
+                    end
+                end
+                map_kxkz = fullmode;
+        
+                map_mxmz = zeros([size(map_kxkz),size(map_kxkz,1)]);
+                for i = 1:size(map_kxkz,1)
+                    map_mxmz(:,:,i) = map_kxkz(i,:) - map_kxkz;
+                end
+                
+                % linear and nonlinear operator indexing
+                lin_nonlin_ind = struct();
+                for i = 1:size(map_kxkz,1)
+                    lin_nonlin_ind(i).nxnz(1,:) = map_kxkz(i,:);
+                    
+                    % filter out wavenumber not in model
+                    a = gp.filter_out_of_range(map_kxkz, map_mxmz(:,:,i));
+                    
+                    lin_nonlin_ind(i).mxmz = a;
+        
+                    % recover kxkz
+                    lin_nonlin_ind(i).kxkz = lin_nonlin_ind(i).nxnz(1,:) - ...
+                                                lin_nonlin_ind(i).mxmz;
+                end
+            case 1
+                [lin_nonlin_ind, fullmode, ~] = gp.load_predefined_model(nx);                
         end
         
     end
@@ -278,31 +282,42 @@ classdef gp
         %          size_n_seq ---- The number of permutations (i.e
         %                          length(n_seq))
 
-            n_seq = perms(1:Np);
+%             n_seq = perms(1:Np);
+%             
+%             if Np ~= 1
+%                 tmp = repmat(1:Np,Np,1)';
+%                 n_seq = [n_seq; tmp];
+%             end
+%             
+%             size_n_seq = size(n_seq,1);
+%             
+%             n_seq_out(1,:) = n_seq(1,:);
+%             for i = 2:size_n_seq
+%                 if n_seq(i-1,1) ~= n_seq(i,1) || n_seq(i-1,2) ~= n_seq(i,2)
+%                     n_seq_out(i,:) = n_seq(i,:);
+%                 end
+%             end
+%             
+%             n_seq_out( all(~n_seq_out,2), : ) = [];
+%             n_seq = n_seq_out;
+%             size_n_seq = size(n_seq,1);
+%             
+%             if Np == 1
+%                 n_seq = [1 1];
+%                 size_n_seq = size(n_seq,1);
+%             end
+
+            np_arr = 1:Np;
+            np_mat = repmat(np_arr, Np);
             
-            if Np ~= 1
-                tmp = repmat(1:Np,Np,1)';
-                n_seq = [n_seq; tmp];
-            end
+            np_arr_1 = reshape(np_mat,Np^3,1);
+            np_arr_2 = reshape(np_mat',Np^3,1);
             
+            n_seq = [np_arr_1 np_arr_2];
+            n_seq = n_seq(1:Np^2,:);
+
             size_n_seq = size(n_seq,1);
-            
-            n_seq_out(1,:) = n_seq(1,:);
-            for i = 2:size_n_seq
-                if n_seq(i-1,1) ~= n_seq(i,1) || n_seq(i-1,2) ~= n_seq(i,2)
-                    n_seq_out(i,:) = n_seq(i,:);
-                end
-            end
-            
-            n_seq_out( all(~n_seq_out,2), : ) = [];
-            n_seq = n_seq_out;
-            size_n_seq = size(n_seq,1);
-            
-            if Np == 1
-                n_seq = [1 1];
-                size_n_seq = size(n_seq,1);
-            end
-        
+
         % this function is a MESS
     end
 
@@ -455,7 +470,7 @@ classdef gp
     function [L, lam, diff, production] = eval_L_k(Re, ny, y, Lx, Lz, phi, n, k, nx, nz, pod_wave, dw, w)
 
 
-        
+
         invRe = 1/Re;
         
         kron = 0;
@@ -742,14 +757,34 @@ classdef gp
         L = orderfields(L, [1:7,11,8:10]);
     end
     
-    function adot = eval_adot(t, a, L, N, nw_pod, a0)
+    function a_initial = set_initial_conditions(t_initial, a_dns, fullmode_pod, pod_wave)
+            
+            dof = size(fullmode_pod,1);
+            a_initial = zeros(dof, 1);
+
+            for i_init = 1:dof
+                nxnz = fullmode_pod(i_init,2:3);
+                Np = fullmode_pod(i_init,1);
+            
+                I = gp.find_wave_number_in_map(nxnz(1), nxnz(2), pod_wave);
+            
+                a_initial(i_init) = a_dns(t_initial, Np, I);
+            
+            end        
+
+    end
+
+    function adot = eval_adot(t, a, L, N, nw_pod)
         
         disp(['t = ', num2str(t)]);
 
-        a_len = size(a0,1);
+        a_len = size(L,2);
 
         adot_lin = zeros(a_len,1);
         adot_nonlin = adot_lin;
+
+        % total number of permutations of the PODs
+        perms_length = size(N(1).n_seq,1);        
         
         % linear coefficient
         for i_lin = 1:a_len
@@ -761,13 +796,12 @@ classdef gp
                 adot_lin(i_lin) = adot_lin(i_lin) + L(i_lin).coeff(i_pod)*anxnz;
             end
 
-        end
         
-        % total number of permutations of the PODs
-        perms_length = size(N(1).n_seq,1);
+        
 
-        % nonlinear coefficient
-        for i_nonlin = 1:a_len
+            % nonlinear coefficient
+
+            i_nonlin = i_lin;
             
             kxkz_arr = N(i_nonlin).kxkz;
             kxkz_len = size(kxkz_arr,1);
