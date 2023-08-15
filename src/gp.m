@@ -639,6 +639,7 @@ classdef gp
                     gp.eval_L_m(Re, ny, y, Lx, Lz, phi, ...
                     L(i).n, L(i).n_seq(i_pod), nxnz(1), nxnz(2), pod_wave, dw, w);
             end
+            disp(['linear coeff ',num2str(i),'/',num2str(size(L,2))])
         end
 
         % rearrange field (just for aesthetic)
@@ -692,6 +693,10 @@ classdef gp
                 end            
         
             end
+
+            if mod(i,100) == 0
+            disp(['prep nonlinear coeff ',num2str(i),'/',num2str(size(N,2))])
+            end
         end
         
         % Fills in Nonlinear coefficients
@@ -721,6 +726,8 @@ classdef gp
                 end
               
             end
+
+             disp(['nonlinear coeff ',num2str(i),'/',num2str(size(N,2))])
         
         end        
 
@@ -796,9 +803,6 @@ classdef gp
                 adot_lin(i_lin) = adot_lin(i_lin) + L(i_lin).coeff(i_pod)*anxnz;
             end
 
-        
-        
-
             % nonlinear coefficient
 
             i_nonlin = i_lin;
@@ -806,19 +810,23 @@ classdef gp
             kxkz_arr = N(i_nonlin).kxkz;
             kxkz_len = size(kxkz_arr,1);
 
+            a_mxmz_loc = N(i_nonlin).a_mxmz_loc;
+            a_kxkz_loc = N(i_nonlin).a_kxkz_loc;
+            N_coeff_tmp = N(i_nonlin).coeff;
+
+
             for i = 1:kxkz_len               
                 
-                for i_perms = 1:perms_length
+                m_loc = a_mxmz_loc(i, :);
+                k_loc = a_kxkz_loc(i, :);
 
-                    m_loc = N(i_nonlin).a_mxmz_loc(i, i_perms);
-                    k_loc = N(i_nonlin).a_kxkz_loc(i, i_perms);
+                tmp = a(m_loc).*a(k_loc);
 
-                    adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + ...
-                        N(i_nonlin).coeff(i,i_perms)*a(m_loc)*a(k_loc);
-                end
+                adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + ...
+                                N_coeff_tmp(i,:)*tmp;
 
-            end
-            
+            end      
+
         end
 
         adot = adot_lin + adot_nonlin;
@@ -836,14 +844,91 @@ classdef gp
 
     end
 
+    function adot = eval_adot_fast(t, a, L, N, nw_pod)
+
+        disp(['t = ', num2str(t)]);
+
+        a_len = size(L,2);
+
+        adot_lin = zeros(a_len,1);
+        adot_nonlin = adot_lin;
+
+        conj_len = size(L(1).conj_ind_start,1);
+        for i_conj = 1:conj_len
+            st = L(1).conj_ind_start(i_conj);
+            ed = L(1).conj_ind_end(i_conj); % ed for end 
+            change_pod_ind = L(1).change_POD_ind(i_conj);
+
+            for i_lin = change_pod_ind:st
+                for i_pod = 1:nw_pod
+    
+                    anxnz = a(L(i_lin).pod_pair(i_pod));
+    
+                    adot_lin(i_lin) = adot_lin(i_lin) + L(i_lin).coeff(i_pod)*anxnz;
+                end
+    
+                % nonlinear coefficient
+    
+                i_nonlin = i_lin;
+                
+                kxkz_arr = N(i_nonlin).kxkz;
+                kxkz_len = size(kxkz_arr,1);
+    
+                a_mxmz_loc = N(i_nonlin).a_mxmz_loc;
+                a_kxkz_loc = N(i_nonlin).a_kxkz_loc;
+                N_coeff_tmp = N(i_nonlin).coeff;
+    
+    
+                for i = 1:kxkz_len               
+                    
+                    m_loc = a_mxmz_loc(i, :);
+                    k_loc = a_kxkz_loc(i, :);
+    
+                    tmp = a(m_loc).*a(k_loc);
+    
+                    adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + ...
+                                    N_coeff_tmp(i,:)*tmp;
+                end                      
+            end
+
+%             change_pod_ind = L(1).change_POD_ind(i_conj);
+
+%             adot(st:ed) = flip(conj(adot(change_pod_ind:st-2)));            
+        end        
+
+
+        adot = adot_lin + adot_nonlin;
+
+
+        % force conjugation
+        conj_len = size(L(1).conj_ind_start,1);
+        for i_conj = 1:conj_len
+            st = L(1).conj_ind_start(i_conj);
+            ed = L(1).conj_ind_end(i_conj); % ed for end 
+
+            change_pod_ind = L(1).change_POD_ind(i_conj);
+
+            adot(st:ed) = flip(conj(adot(change_pod_ind:st-2)));
+        end
+
+
+    end
+
+
+
+
+
     function [adot, adot_lin, adot_nonlin] = eval_adot_debug(t, a, L, N, nw_pod, a0)
         
         disp(['t = ', num2str(t)]);
 
-        a_len = size(a0,1);
+        a_len = size(L,2);
 
         adot_lin = zeros(a_len,1);
         adot_nonlin = adot_lin;
+
+        % total number of permutations of the PODs
+        perms_length = size(N(1).n_seq,1);        
         
         % linear coefficient
         for i_lin = 1:a_len
@@ -855,30 +940,41 @@ classdef gp
                 adot_lin(i_lin) = adot_lin(i_lin) + L(i_lin).coeff(i_pod)*anxnz;
             end
 
-        end
-        
-        % total number of permutations of the PODs
-        perms_length = size(N(1).n_seq,1);
+            % nonlinear coefficient
 
-        % nonlinear coefficient
-        for i_nonlin = 1:a_len
+            i_nonlin = i_lin;
             
             kxkz_arr = N(i_nonlin).kxkz;
             kxkz_len = size(kxkz_arr,1);
 
+            a_mxmz_loc = N(i_nonlin).a_mxmz_loc;
+            a_kxkz_loc = N(i_nonlin).a_kxkz_loc;
+            N_coeff_tmp = N(i_nonlin).coeff;
+
+%             for i = 1:kxkz_len               
+%                 
+%                 for i_perms = 1:perms_length
+% 
+%                     m_loc = a_mxmz_loc(i, i_perms);
+%                     k_loc = a_kxkz_loc(i, i_perms);
+% 
+%                     adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + N_coeff_tmp(i,i_perms)*a(m_loc)*a(k_loc);
+%                 end
+% 
+%             end
+
             for i = 1:kxkz_len               
                 
-                for i_perms = 1:perms_length
+                m_loc = a_mxmz_loc(i, :);
+                k_loc = a_kxkz_loc(i, :);
 
-                    m_loc = N(i_nonlin).a_mxmz_loc(i, i_perms);
-                    k_loc = N(i_nonlin).a_kxkz_loc(i, i_perms);
+                tmp = a(m_loc).*a(k_loc);
 
-                    adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + ...
-                        N(i_nonlin).coeff(i,i_perms)*a(m_loc)*a(k_loc);
-                end
+                adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + ...
+                                N_coeff_tmp(i,:)'*tmp;
 
-            end
-            
+            end      
+
         end
 
         adot = adot_lin + adot_nonlin;
