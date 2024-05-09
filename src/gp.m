@@ -1,4 +1,10 @@
 classdef gp
+    
+    % THIS FILE CONTAINS ALL THE RELEVANT FUNCTION TO COMPUTE GALERKIN
+    % PROJECTION
+
+
+
     methods(Static)
     
     function I = find_wave_number_in_map(nx, nz, pod_wave)
@@ -142,6 +148,9 @@ classdef gp
         %                              by Smith(2005)
         %                              Column 1&2: nx&nz
         %                              Column 3  : pods
+        %
+        % ============================ NOT USED ===========================
+        % ============================ NOT USED ===========================
 
         if model_name == 6
             model = [ 0, 0, 1; ...
@@ -226,6 +235,7 @@ classdef gp
         %                              load_predefined_model()
         %          fullmode       ---- As specified in
         %                              load_predefined_model()
+
         switch nargin
             case 2
                 max_nx = nx;
@@ -277,46 +287,22 @@ classdef gp
     function [size_n_seq, n_seq] = gen_Np_perm(Np)
 
         % Generate permutation for POD summations
-        % Inputs: Np ---- No. of PODs in the current model
+        % Inputs:  Np ---- No. of PODs in the current model
         % Outputs: n_seq      ---- a sequence of all possible 1:Np permutations
         %          size_n_seq ---- The number of permutations (i.e
         %                          length(n_seq))
 
-%             n_seq = perms(1:Np);
-%             
-%             if Np ~= 1
-%                 tmp = repmat(1:Np,Np,1)';
-%                 n_seq = [n_seq; tmp];
-%             end
-%             
-%             size_n_seq = size(n_seq,1);
-%             
-%             n_seq_out(1,:) = n_seq(1,:);
-%             for i = 2:size_n_seq
-%                 if n_seq(i-1,1) ~= n_seq(i,1) || n_seq(i-1,2) ~= n_seq(i,2)
-%                     n_seq_out(i,:) = n_seq(i,:);
-%                 end
-%             end
-%             
-%             n_seq_out( all(~n_seq_out,2), : ) = [];
-%             n_seq = n_seq_out;
-%             size_n_seq = size(n_seq,1);
-%             
-%             if Np == 1
-%                 n_seq = [1 1];
-%                 size_n_seq = size(n_seq,1);
-%             end
 
-            np_arr = 1:Np;
-            np_mat = repmat(np_arr, Np);
-            
-            np_arr_1 = reshape(np_mat,Np^3,1);
-            np_arr_2 = reshape(np_mat',Np^3,1);
-            
-            n_seq = [np_arr_1 np_arr_2];
-            n_seq = n_seq(1:Np^2,:);
+        np_arr = 1:Np;
+        np_mat = repmat(np_arr, Np);
+        
+        np_arr_1 = reshape(np_mat,Np^3,1); % ????
+        np_arr_2 = reshape(np_mat',Np^3,1); % ????
+        
+        n_seq = [np_arr_1 np_arr_2];
+        n_seq = n_seq(1:Np^2,:);
 
-            size_n_seq = size(n_seq,1);
+        size_n_seq = size(n_seq,1);
 
         % this function is a MESS
     end
@@ -361,6 +347,25 @@ classdef gp
     function N = eval_N_k(y, Lx, Lz, phi, n, m, k, nx, nz, kx, kz, mx, mz, pod_wave,...
                     diff_weight, int_weight)
 
+    % This funcion evaluates the nonlinear coefficient of the Galerkin
+    % projection
+    % Inputs: y (double array) --- An array of wall normal axis on
+    %                              chebeshev points
+    %         Lx (double)      --- Length of domain in streamwise direction
+    %         Lz (double)      --- Length of domain in spanwise direction 
+    %         phi (complex double array) --- Array of basis function
+    %         n (integer)      --- nonlinear wavenumber coupling 
+    %         m (integer)      --- nonlinear wavenumber coupling
+    %         k (integer)      --- nonlinear wavenumber coupling
+    %         nx, nz, kz, kz, mx, mz (integer) --- nonlinear wavenumber coupling
+    %         pod_wave (integer array) --- Array of wavenumber map 
+    %         diff_weight (double array) --- Differential weight of each
+    %                                        chebeyshev points in y
+    %         int_weight (double array) --- Integration weight of each
+    %                                       chebeyshev points in y
+    % Outputs: N (complex double) --- nonlinear coefficient of current
+    %                                 nonlninear wavenumber coupling
+
     I_n = gp.find_wave_number_in_map(nx, nz, pod_wave);
     I_k = gp.find_wave_number_in_map(kx, kz, pod_wave);
     I_m = gp.find_wave_number_in_map(mx, mz, pod_wave);
@@ -377,9 +382,6 @@ classdef gp
     phiv_m = phi(2:3:end,m, I_m);
     phiw_m = phi(3:3:end,m, I_m);
 
-%     dphi_u = math.diff_phi(phiu_m, diff_weight);
-%     dphi_v = math.diff_phi(phiv_m, diff_weight);
-%     dphi_w = math.diff_phi(phiw_m, diff_weight);
     dphi_u = diff_weight(:,:,1)*phiu_m;
     dphi_v = diff_weight(:,:,1)*phiv_m;
     dphi_w = diff_weight(:,:,1)*phiw_m;
@@ -468,7 +470,9 @@ classdef gp
      end
     
     function [L, lam, diff, production] = eval_L_k(Re, ny, y, Lx, Lz, phi, n, k, nx, nz, pod_wave, dw, w)
-
+    
+        % This function evaluates the linear coefficients in Galerkin
+        % projection. NOT USED in the final code
 
 
         invRe = 1/Re;
@@ -549,6 +553,32 @@ classdef gp
     end
 
     function [L, lam, diff, prod] = eval_L_m(Re, ny, y, Lx, Lz, phi, n, m, nx, nz, pod_wave, dw, w)
+
+        % This function evaluates the linear coefficient in Galerkin
+        % projection. 
+        % Inputs: Re (double) --- Reynolds number
+        %         ny (int) --- Number of grid points in wall normal direction
+        %         y  (double array) --- An array of wall normal coordinates. len(y) = ny
+        %         Lx (double) --- Length of streamwise axis 
+        %         Lz (double) --- Length of spanwise axis
+        %         phi (complex double array) --- wall normal POD basis function
+        %         n  (integer) --- wave number coupling in linear Galerkin projection
+        %         m  (integer) --- same as above
+        %         pod_wave (complex double array) --- column 1: all pod numbers
+        %                                             column 2&3: all nx and nz wavenumbers 
+        %         dw (double array) --- differentiate weight for Cheybeshev points
+        %         w (double array) --- integration weights for Cheybeshev
+        %                              points
+        % Outputs: L (complex double array) --- full linear matrix for
+        %                                       Galerkin projection
+        %          lam (complex double array) --- Linear matrix for
+        %                                         galerkin projection of the laminar state
+        %          diff (complex double array) --- Linear matrix for
+        %                                          Galerkin projection of diffusion (i.e \nabla^2 u) 
+        %          prod (complex double array) --- Linear matrix for
+        %                                          Galerkin projection of production term
+
+
         invRe = 1/Re;
         
         lam = 0;
@@ -586,7 +616,8 @@ classdef gp
             lam_v = lam_v + w(i)*lam_v_int(i);
             lam_w = lam_w + w(i)*lam_w_int(i);
         end
-        % !!!!!!!!!!!!!!!!!!!
+        % !!!!!!!!!!!!!!!!!!! (I MISSED A NEGATIVE SIGN HERE BUT IT
+        %                       WORKS)
         lam = 2*pi*1i*nx*(lam_u + lam_v + lam_w)/Lx;
        
         
@@ -611,7 +642,8 @@ classdef gp
             diff_w = diff_w + w(i)*diff_w_int(i);
         end
         diff = -invRe*(diff_u + diff_v + diff_w) + diff_1;
-
+        
+        % Combine all linear matrix components
         L = lam + diff + prod;
         
     end
@@ -620,6 +652,28 @@ classdef gp
 
         % This function encasuplate all processes to compute linear and
         % nonlinear coefficients
+        % Inputs:   Re (double) --- Reynolds number
+        %           Np (integer) --- Number of POD modes for each wavenumber
+        %           phi (complex double array) --- Basis function array
+        %           lin_nonlin_ind (integer array) --- Map of each
+        %                                              wavenumber coupling
+        %           fullmode (integer array) --- Array containing all POD
+        %                                        modes and wavenumber
+        %                                        indexes.
+        %                                        (e.g: 1st col: POD modes,
+        %                                        2nd col: wavenumber in x
+        %                                        3rd col: wavenumber in z)
+        %           pod_wave (integer array) --- An array of wavenumber map
+        % Outputs: L (complex double array) --- An filled completed Linear
+        %                                       matrix that is ready to go
+        %                                       into timestepping
+        %          N (complex double array) --- An filled completed
+        %                                       nonlinear matrix that is
+        %                                       ready to go into
+        %                                       timestepping
+        %          fullmode_pod (integer array) --- An finalised version of
+        %                                           of POD modes to
+        %                                           wavenumber map
 
         [x,y,z,nx,ny,nz,Lx,Lz] = modal_decomposition.read_geom;
         
@@ -737,6 +791,8 @@ classdef gp
 
     % This function encasuplate all processes to compute linear and
     % nonlinear coefficients
+    % Inputs: SEE get_L_N_struct
+    % Ouputs: SEE get_L_N_struct
 
         [x,y,z,nx,ny,nz,Lx,Lz] = modal_decomposition.read_geom;
         
@@ -765,6 +821,17 @@ classdef gp
     end
     
     function a_initial = set_initial_conditions(t_initial, a_dns, fullmode_pod, pod_wave)
+
+    % This function sets the inital condition for ode timestepping. Initial
+    % conditions are obtained from DNS data
+    % Inputs: t_initial (integer) --- Timestep from DNS to set as initial
+    %                                 conditions
+    %         a_dns (complex double array) --- Modal time coefficients from
+    %                                          DNS
+    %         fullmode_pod (integer array) --- SEE get_L_N_struct
+    %         pod_wave (integer array) --- SEE get_L_N_struct
+    % Outputs: a_initial (complex double array) --- finial initial
+    %                                               conditions to start timestepping.
             
             dof = size(fullmode_pod,1);
             a_initial = zeros(dof, 1);
@@ -805,27 +872,23 @@ classdef gp
 
             % nonlinear coefficient
 
-            i_nonlin = i_lin;
-            
-            kxkz_arr = N(i_nonlin).kxkz;
-            kxkz_len = size(kxkz_arr,1);
-
-            a_mxmz_loc = N(i_nonlin).a_mxmz_loc;
-            a_kxkz_loc = N(i_nonlin).a_kxkz_loc;
-            N_coeff_tmp = N(i_nonlin).coeff;
-
-
-            for i = 1:kxkz_len               
+                i_nonlin = i_lin;
                 
-                m_loc = a_mxmz_loc(i, :);
-                k_loc = a_kxkz_loc(i, :);
-
-                tmp = a(m_loc).*a(k_loc);
-
-                adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + ...
-                                N_coeff_tmp(i,:)*tmp;
-
-            end      
+                kxkz_arr = N(i_nonlin).kxkz;
+                kxkz_len = size(kxkz_arr,1);
+    
+                for i = 1:kxkz_len               
+                    
+                    for i_perms = 1:perms_length
+    
+                        m_loc = N(i_nonlin).a_mxmz_loc(i, i_perms);
+                        k_loc = N(i_nonlin).a_kxkz_loc(i, i_perms);
+    
+                        adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + ...
+                            N(i_nonlin).coeff(i,i_perms)*a(m_loc)*a(k_loc);
+                    end
+    
+                end  
 
         end
 
@@ -845,6 +908,22 @@ classdef gp
     end
 
     function adot = eval_adot_fast(t, a, L, N, nw_pod)
+
+        % This function evaluates the rate of change of modal time
+        % coefficients. An improved faster version from eval_adot.
+        % The differences enforced conjugate symmetry and loop unrolling
+        % and some IO optimisation
+        % Inputs: t (double) --- current time to evaluates rate of change (not
+        %               computationally significant)
+        %         a (complex double array) --- current modal time
+        %                                      coefficients
+        %         L (complex double array) --- Linear coefficient matrix
+        %         N (complex double array) --- Nonlinear coefficient matrix
+        %         nw_pod (double) --- number of POD basis for each wave
+        %                             number
+        % Outputs: adot (complex double array) --- current rate of change
+        %                                          of modal time
+        %                                          coefficiens
 
         disp(['t = ', num2str(t)]);
 
@@ -890,10 +969,7 @@ classdef gp
                                     N_coeff_tmp(i,:)*tmp;
                 end                      
             end
-
-%             change_pod_ind = L(1).change_POD_ind(i_conj);
-
-%             adot(st:ed) = flip(conj(adot(change_pod_ind:st-2)));            
+          
         end        
 
 
@@ -919,6 +995,14 @@ classdef gp
 
 
     function [adot, adot_lin, adot_nonlin] = eval_adot_debug(t, a, L, N, nw_pod, a0)
+
+    % Debug code for eval_adot.
+    % Inputs: SEE eval_adot
+    % Outputs: SEE eval_adot
+    %          adot_lin (complex double array) --- linear contribution of
+    %                                              Galerkin projection
+    %          adot_nonlin (complex double array) --- nonlinear
+    %          contribution of Galerkin projection
         
         disp(['t = ', num2str(t)]);
 
@@ -927,57 +1011,49 @@ classdef gp
         adot_lin = zeros(a_len,1);
         adot_nonlin = adot_lin;
 
-        % total number of permutations of the PODs
-        perms_length = size(N(1).n_seq,1);        
-        
-        % linear coefficient
-        for i_lin = 1:a_len
+        conj_len = size(L(1).conj_ind_start,1);
+        for i_conj = 1:conj_len
+            st = L(1).conj_ind_start(i_conj);
+            ed = L(1).conj_ind_end(i_conj); % ed for end 
+            change_pod_ind = L(1).change_POD_ind(i_conj);
 
-            for i_pod = 1:nw_pod
-
-                anxnz = a(L(i_lin).pod_pair(i_pod));
-
-                adot_lin(i_lin) = adot_lin(i_lin) + L(i_lin).coeff(i_pod)*anxnz;
-            end
-
-            % nonlinear coefficient
-
-            i_nonlin = i_lin;
-            
-            kxkz_arr = N(i_nonlin).kxkz;
-            kxkz_len = size(kxkz_arr,1);
-
-            a_mxmz_loc = N(i_nonlin).a_mxmz_loc;
-            a_kxkz_loc = N(i_nonlin).a_kxkz_loc;
-            N_coeff_tmp = N(i_nonlin).coeff;
-
-%             for i = 1:kxkz_len               
-%                 
-%                 for i_perms = 1:perms_length
-% 
-%                     m_loc = a_mxmz_loc(i, i_perms);
-%                     k_loc = a_kxkz_loc(i, i_perms);
-% 
-%                     adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + N_coeff_tmp(i,i_perms)*a(m_loc)*a(k_loc);
-%                 end
-% 
-%             end
-
-            for i = 1:kxkz_len               
+            for i_lin = change_pod_ind:st
+                for i_pod = 1:nw_pod
+    
+                    anxnz = a(L(i_lin).pod_pair(i_pod));
+    
+                    adot_lin(i_lin) = adot_lin(i_lin) + L(i_lin).coeff(i_pod)*anxnz;
+                end
+    
+                % nonlinear coefficient
+    
+                i_nonlin = i_lin;
                 
-                m_loc = a_mxmz_loc(i, :);
-                k_loc = a_kxkz_loc(i, :);
+                kxkz_arr = N(i_nonlin).kxkz;
+                kxkz_len = size(kxkz_arr,1);
+    
+                a_mxmz_loc = N(i_nonlin).a_mxmz_loc;
+                a_kxkz_loc = N(i_nonlin).a_kxkz_loc;
+                N_coeff_tmp = N(i_nonlin).coeff;
+    
+    
+                for i = 1:kxkz_len               
+                    
+                    m_loc = a_mxmz_loc(i, :);
+                    k_loc = a_kxkz_loc(i, :);
+    
+                    tmp = a(m_loc).*a(k_loc);
+    
+                    adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + ...
+                                    N_coeff_tmp(i,:)*tmp;
+                end                      
+            end
+          
+        end        
 
-                tmp = a(m_loc).*a(k_loc);
-
-                adot_nonlin(i_nonlin) = adot_nonlin(i_nonlin) + ...
-                                N_coeff_tmp(i,:)'*tmp;
-
-            end      
-
-        end
 
         adot = adot_lin + adot_nonlin;
+
 
         % force conjugation
         conj_len = size(L(1).conj_ind_start,1);
