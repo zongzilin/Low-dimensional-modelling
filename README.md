@@ -1,6 +1,6 @@
-# Low Dimensional Modelling eddy viscosity closure
+# Low dimensional model of plane Couette flow
 
-This code performs modal reduction and Galerkin projection of plane couette flow (PCF). This code has many redundant variables and some variables need better name.
+This code performs modal reduction and Galerkin projection of plane couette flow (PCF). This code is an extension for formulation in Zhao. et al (2021) to more than 1 POD mode for each basis. 
 
 ## Problem now
  - In modal decomposition, one must mannually set the number of wavenumber in span and streamwise direction.
