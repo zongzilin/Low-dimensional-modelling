@@ -178,6 +178,8 @@ classdef gp
         elseif model_name == 3
             model = [ 0, 0, 1; ...
                    0, 1, 1; 0,-1, 1];
+        elseif model_name == 1
+            model = [1, 0, 1];
         end
 
         % find max nx nz
@@ -991,7 +993,49 @@ classdef gp
     end
 
 
+    function adot = eval_adot_ultra_fast(t,a,L,N)
 
+        disp(num2str(t))
+        
+        conj_len = size(L(1).conj_ind_start,1);
+
+        for i_conj = 1:conj_len
+            st = L(1).conj_ind_start(i_conj);
+            ed = L(1).conj_ind_end(i_conj); % ed for end 
+            change_pod_ind = L(1).change_POD_ind(i_conj);
+
+            for i_dof = change_pod_ind:st
+
+                tmp_pod_pair_lin = L(i_dof).pod_pair;
+                t_adot_lin(i_dof,1) = L(i_dof).coeff(:)'*a(tmp_pod_pair_lin);
+                
+                a_mxmz_loc = N(i_dof).a_mxmz_loc(:);
+                a_kxkz_loc = N(i_dof).a_kxkz_loc(:);
+            
+                AA = a(a_mxmz_loc).*a(a_kxkz_loc);
+            
+                coeff_nonlin = N(i_dof).coeff(:);
+            
+                t_adot_nonlin(i_dof,1) = coeff_nonlin'*AA;
+            end
+        
+        end
+        
+        t_adot = t_adot_nonlin + t_adot_lin;
+        
+        conj_len = size(L(1).conj_ind_start,1);
+        for i_conj = 1:conj_len
+            st = L(1).conj_ind_start(i_conj);
+            ed = L(1).conj_ind_end(i_conj); % ed for end 
+        
+            change_pod_ind = L(1).change_POD_ind(i_conj);
+        
+            t_adot(st:ed) = flip(conj(t_adot(change_pod_ind:st-2)));
+        end
+        
+        adot = t_adot;
+
+    end
 
 
     function [adot, adot_lin, adot_nonlin] = eval_adot_debug(t, a, L, N, nw_pod, a0)
@@ -1069,12 +1113,140 @@ classdef gp
     end
 
 
+    function [L, lam, diff, prod,Lv,Lu] = eval_L_m_verify(Re, ny, y, Lx, Lz, phi, n, m, nx, nz, pod_wave, dw, w)
+
+        % This function evaluates the linear coefficient in Galerkin
+        % projection. 
+        % Inputs: Re (double) --- Reynolds number
+        %         ny (int) --- Number of grid points in wall normal direction
+        %         y  (double array) --- An array of wall normal coordinates. len(y) = ny
+        %         Lx (double) --- Length of streamwise axis 
+        %         Lz (double) --- Length of spanwise axis
+        %         phi (complex double array) --- wall normal POD basis function
+        %         n  (integer) --- wave number coupling in linear Galerkin projection
+        %         m  (integer) --- same as above
+        %         pod_wave (complex double array) --- column 1: all pod numbers
+        %                                             column 2&3: all nx and nz wavenumbers 
+        %         dw (double array) --- differentiate weight for Cheybeshev points
+        %         w (double array) --- integration weights for Cheybeshev
+        %                              points
+        % Outputs: L (complex double array) --- full linear matrix for
+        %                                       Galerkin projection
+        %          lam (complex double array) --- Linear matrix for
+        %                                         galerkin projection of the laminar state
+        %          diff (complex double array) --- Linear matrix for
+        %                                          Galerkin projection of diffusion (i.e \nabla^2 u) 
+        %          prod (complex double array) --- Linear matrix for
+        %                                          Galerkin projection of production term
 
 
+        invRe = 1/Re;
+        
+        lam = 0;
+        diff = 0;
+        prod = 0;
 
+        index = gp.find_wave_number_in_map(nx, nz, pod_wave);
 
+        phiu_n = phi(1:3:end, n, index);
+        phiv_n = phi(2:3:end, n, index);
+        phiw_n = phi(3:3:end, n, index);
 
+        phiu_m = phi(1:3:end, m, index);
+        phiv_m = phi(2:3:end, m, index);
+        phiw_m = phi(3:3:end, m, index);
 
+        prod_int = conj(phiv_m).*phiu_n;
+
+        for i = 1:ny
+            prod = prod + w(i)*prod_int(i);
+        end
+        prod = -prod;
+
+        % laminar state !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        lam_u_int = y.*conj(phiu_m).*phiu_n;
+        lam_v_int = y.*conj(phiv_m).*phiv_n;
+        lam_w_int = y.*conj(phiw_m).*phiw_n;
+        
+        lam_u = 0;
+        lam_v = 0;
+        lam_w = 0;
+
+        for i = 1:ny
+            lam_u = lam_u + w(i)*lam_u_int(i);
+            lam_v = lam_v + w(i)*lam_v_int(i);
+            lam_w = lam_w + w(i)*lam_w_int(i);
+        end
+        % !!!!!!!!!!!!!!!!!!! (I MISSED A NEGATIVE SIGN HERE BUT IT
+        %                       WORKS)
+        lam = 2*pi*1i*nx*(lam_u + lam_v + lam_w)/Lx;
+        lam_V = 2*pi*1i*nx*lam_v/Lx;
+        lam_U = 2*pi*1i*nx*lam_u/Lx;
+        
+        % diffusion/viscous
+        kron = 0;
+        if n == m
+            kron = 1;
+        end
+        diff_1 = -invRe*((2*pi*nx/Lx)^2 + (2*pi*nz/Lz)^2)*kron;
+
+        diff_u = 0;
+        diff_v = 0;
+        diff_w = 0;
+
+        diff_u_int = dw(:,:,1)*conj(phiu_m).*(dw(:,:,1)*phiu_n);
+        diff_v_int = dw(:,:,1)*conj(phiv_m).*(dw(:,:,1)*phiv_n);
+        diff_w_int = dw(:,:,1)*conj(phiw_m).*(dw(:,:,1)*phiw_n);
+
+        for i = 1:ny
+            diff_u = diff_u + w(i)*diff_u_int(i);
+            diff_v = diff_v + w(i)*diff_v_int(i);
+            diff_w = diff_w + w(i)*diff_w_int(i);
+        end
+        diff = -invRe*(diff_u + diff_v + diff_w) + diff_1;
+        diff_V = -invRe*(diff_v) + diff_1;
+        diff_U = -invRe*(diff_u) + diff_1;
+        
+        % Combine all linear matrix components
+        L = lam + diff + prod;
+        Lv = lam_V + diff_V;
+        Lu = lam_U + diff_U - prod;
+        
+        
+    end
+
+    function [L, fullmode_pod] = get_L_struct_verify(Re, Np, phi, lin_nonlin_ind, fullmode, pod_wave)
+
+    % This function encasuplate all processes to compute linear and
+    % nonlinear coefficients
+    % Inputs: SEE get_L_N_struct
+    % Ouputs: SEE get_L_N_struct
+
+        [x,y,z,nx,ny,nz,Lx,Lz] = modal_decomposition.read_geom;
+        
+        const_lin_nonlin_ind = lin_nonlin_ind; % This line saves the index map to be used in ODE45 (nothing mathematical)
+        
+        w = math.f_chebyshev_int_weight(ny);
+        [~,dw] = math.f_chebdiff(ny, 1);
+                        
+        [L, fullpod, fullmode, fullmode_pod] = gp.prep_L_matrix(Np, fullmode);
+        L = gp.find_POD_pair_conj_index_in_model(L, Np, const_lin_nonlin_ind,fullmode);
+        
+        for i = 1:size(L,2)
+            size_n_seq = size(L(i).n_seq,2);
+            nxnz = L(i).nxnz;
+            for i_pod = 1:size_n_seq
+                [L(i).coeff(i_pod), L(i).lam(i_pod), L(i).diff(i_pod), L(i).prod(i_pod),L(i).Lv(i_pod),L(i).Lu(i_pod)] = ...
+                    gp.eval_L_m_verify(Re, ny, y, Lx, Lz, phi, ...
+                    L(i).n, L(i).n_seq(i_pod), nxnz(1), nxnz(2), pod_wave, dw, w);
+            end
+        end
+    
+        % rearrange field (just for aesthetic)
+        % L = orderfields(L, [1:5,9,6:8,10:11]);
+        % L = orderfields(L, [1:6,10,7:9,11]);
+        % L = orderfields(L, [1:7,11,8:10]);
+    end
 
 
 
