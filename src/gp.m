@@ -179,7 +179,7 @@ classdef gp
             model = [ 0, 0, 1; ...
                    0, 1, 1; 0,-1, 1];
         elseif model_name == 1
-            model = [1, 0, 1];
+            model = [1, 1, 1];
         end
 
         % find max nx nz
@@ -849,6 +849,61 @@ classdef gp
             end        
 
     end
+    
+    function [L_matrix,N_matrix] = built_matrix(L,N)
+
+        % This function converts linear and nonlinear struct to matrix
+
+
+        dof = size(L,2);
+
+        L_matrix = zeros(dof,dof);
+        
+        for i = 1:dof
+            disp(num2str(i))
+            linear_loc = L(i).pod_pair;
+            linear_coeff = L(i).coeff;
+        
+            L_matrix(i,linear_loc) = L_matrix(i,linear_loc) + linear_coeff;
+        end
+
+
+        tmp = 1:dof;
+        nonlinear_index(:,2) = repmat(tmp',[dof,1]);
+        nonlinear_index(:,1) = reshape(repmat(tmp,[dof,1]),[dof*dof,1]);
+
+        NN = zeros(dof,dof*dof);
+
+        for i = 1:dof
+
+            % mxmz = N(i).mxmz;
+            % kxkz = N(i).kxkz;
+            coeff = N(i).coeff;
+            mxmz_loc = N(i).a_mxmz_loc;
+            kxkz_loc = N(i).a_kxkz_loc;
+            
+            for j = 1:size(mxmz_loc,1)
+                for k = 1:size(mxmz_loc,2)
+        
+                    nonlinear_local_index = find(nonlinear_index(:,1) == mxmz_loc(j,k) & nonlinear_index(:,2) == kxkz_loc(j,k));
+        
+                    NN(i,nonlinear_local_index) = NN(i,nonlinear_local_index) + coeff(j,k);
+        
+        
+                end
+            end
+        
+        
+        end
+
+            N_matrix = NN;
+
+        end
+
+
+
+
+
 
     function adot = eval_adot(t, a, L, N, nw_pod)
         
