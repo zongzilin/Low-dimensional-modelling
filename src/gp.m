@@ -875,7 +875,7 @@ classdef gp
         NN = zeros(dof,dof*dof);
 
         for i = 1:dof
-
+            disp(num2str(i))
             % mxmz = N(i).mxmz;
             % kxkz = N(i).kxkz;
             coeff = N(i).coeff;
@@ -1163,6 +1163,7 @@ classdef gp
             change_pod_ind = L(1).change_POD_ind(i_conj);
 
             adot(st:ed) = flip(conj(adot(change_pod_ind:st-2)));
+            adot_nonlin(st:ed) = flip(conj(adot_nonlin(change_pod_ind:st-2)));
         end
 
     end
@@ -1302,6 +1303,78 @@ classdef gp
         % L = orderfields(L, [1:6,10,7:9,11]);
         % L = orderfields(L, [1:7,11,8:10]);
     end
+
+    
+    %% ADDED 29/DEC/2024. TO FACILITATES BETTER MATRIX OPERATIONS
+    function adot = eval_adot_matrix_noconj(t,X,L,N,conj_ind)
+    disp(num2str(t))
+    
+    a0a0 = X*X.';
+    a0a0 = a0a0(:);
+    
+    adot = L*X + N*a0a0;
+    
+    adot(conj_ind(:,2)) = conj(adot(conj_ind(:,1)));
+    
+    
+    end
+   
+    function a0 = force_ic_conj(L,a0)
+    
+    conj_len = size(L(1).conj_ind_start,1);
+    for i_conj = 1:conj_len
+        st = L(1).conj_ind_start(i_conj);
+        ed = L(1).conj_ind_end(i_conj); % ed for end 
+    
+        change_pod_ind = L(1).change_POD_ind(i_conj);
+    
+        a0(st:ed) = flip(conj(a0(change_pod_ind:st-2)));
+    end
+    
+    end
+    
+    function conj_ind = conj_index(L)
+    
+    conj_len = size(L(1).conj_ind_start,1);
+    
+    for i_conj = 1:conj_len
+        
+    
+        st = L(1).conj_ind_start(i_conj);
+        ed = L(1).conj_ind_end(i_conj); % ed for end 
+        chg = L(1).change_POD_ind(i_conj);
+    
+        start_append = chg:st-2;
+        end_append = ed:-1:st;
+    
+        start_ind(:,i_conj) = start_append;
+        end_ind(:,i_conj) = end_append;
+    end
+    
+    conj_ind(:,1) = start_ind(:);
+    conj_ind(:,2) = end_ind(:);
+    
+    
+    
+    
+    end
+    
+    function [ri_ind, a0] = set_strict_ic_index(dof,a0)
+    ri_ind = ones(dof,2);
+    for i = 1:dof
+        
+        if abs(real(a0(i,1))) <= 1e-8
+            ri_ind(i,1) = 0;
+        elseif abs(imag(a0(i,1))) <= 1e-8
+            ri_ind(i,2) = 0;
+        end
+    
+    end
+    
+    a0 = [real(a0) imag(a0)].*ri_ind;
+    a0 = a0(:,1) + 1i*a0(:,2);
+    end
+
 
 
 
