@@ -286,6 +286,165 @@ classdef gp
         
     end
     
+    function [lin_nonlin_ind, fullmode] = load_model_spectral_deprecate(nx, nz)
+
+        % This function loads a generic model with nx from -nx to +nx and
+        % -nz to +nz
+        % Inputs: nx ---- streamwise wavenumber range
+        %         nz ---- spanwise wavenumber range
+        % Outputs: lin_nonlin_ind ---- As specified in
+        %                              load_predefined_model()
+        %          fullmode       ---- As specified in
+        %                              load_predefined_model()
+
+        switch nargin
+            case 2
+                % Check power 2
+
+                % chk_bool1=util.isPowerOfTwo(nx);
+                % chk_bool2=util.isPowerOfTwo(nz);
+                % 
+                % if chk_bool1==1 | chk_bool2==1
+                %     disp('check input wavenumber')
+                %     return
+                % end
+
+                max_nx = 2^nx;
+                min_nx = -2^nx;
+        
+                max_nz = 2^nz;
+                min_nz = -2^nz;
+        
+                range_nx = -nx:nx;
+                range_nz = -nz:nz;
+
+                nx_logVec = util.log2SpaceInt(1, max_nx);
+                nx_logVec = [flip(nx_logVec).';-nx_logVec.'];
+                nz_logVec = util.log2SpaceInt(1, max_nz);
+                nz_logVec = [flip(nz_logVec).';-(nz_logVec).'];
+
+                nx_logVec_mid_pt = length(nx_logVec)/2;
+                nz_logVec_mid_pt = length(nz_logVec)/2;
+                nx_logVec = [nx_logVec(1:nx_logVec_mid_pt);0;nx_logVec(nx_logVec_mid_pt+1:end)];
+                nz_logVec = [nz_logVec(1:nz_logVec_mid_pt);0;nz_logVec(nz_logVec_mid_pt+1:end)];
+
+                % map_kxkz = model(:,1:2);
+                ind = 1;
+                for i = 1:length(nx_logVec)
+                    for j = 1:length(nz_logVec)
+                        fullmode(ind,1) = nx_logVec(i);
+                        fullmode(ind,2) = nz_logVec(j);
+                
+                        ind = ind + 1;
+                    end
+                end
+                map_kxkz = fullmode;
+        
+                map_mxmz = zeros([size(map_kxkz),size(map_kxkz,1)]);
+                for i = 1:size(map_kxkz,1)
+                    map_mxmz(:,:,i) = map_kxkz(i,:) - map_kxkz;
+                end
+                
+                % linear and nonlinear operator indexing
+                lin_nonlin_ind = struct();
+                for i = 1:size(map_kxkz,1)
+                    lin_nonlin_ind(i).nxnz(1,:) = map_kxkz(i,:);
+                    
+                    % filter out wavenumber not in model
+                    a = gp.filter_out_of_range(map_kxkz, map_mxmz(:,:,i));
+                    
+                    lin_nonlin_ind(i).mxmz = a;
+        
+                    % recover kxkz
+                    lin_nonlin_ind(i).kxkz = lin_nonlin_ind(i).nxnz(1,:) - ...
+                                                lin_nonlin_ind(i).mxmz;
+                end
+            case 1
+                [lin_nonlin_ind, fullmode, ~] = gp.load_predefined_model(nx);                
+        end
+        
+    end
+
+    function [lin_nonlin_ind, fullmode] = load_model_spectral(nx, nz, scale)
+
+        % This function loads a generic model with nx from -nx to +nx and
+        % -nz to +nz
+        % Inputs: nx ---- streamwise wavenumber range
+        %         nz ---- spanwise wavenumber range
+        % Outputs: lin_nonlin_ind ---- As specified in
+        %                              load_predefined_model()
+        %          fullmode       ---- As specified in
+        %                              load_predefined_model()
+
+        switch nargin
+            case 3
+                % Check power 2
+
+                % chk_bool1=util.isPowerOfTwo(nx);
+                % chk_bool2=util.isPowerOfTwo(nz);
+                % 
+                % if chk_bool1==1 | chk_bool2==1
+                %     disp('check input wavenumber')
+                %     return
+                % end
+
+                max_nx = nx;
+                min_nx = -nx;
+        
+                max_nz = nz;
+                min_nz = -nz;
+        
+                range_nx = -nx:nx;
+                range_nz = -nz:nz;
+
+                % map_kxkz = model(:,1:2);
+                % ind = 1;
+                for i_scale = 0:scale
+                ind = 1;
+                for i = min_nx:max_nx
+                    for j = min_nz:max_nz
+                        fullmode(ind,1,i_scale+1) = i*(2^i_scale);
+                        fullmode(ind,2,i_scale+1) = j*(2^i_scale);
+                
+                        ind = ind + 1;
+                    end
+                end
+                end
+                fullmode = fullmode(:,:);
+                fullmode = fullmode(:,1:end-2);
+
+                fullmode = reshape(fullmode,[size(fullmode,1)*size(fullmode,2)/2,2]);
+                fullmode = unique(fullmode,"rows");
+                map_kxkz = fullmode;
+        
+                map_mxmz = zeros([size(map_kxkz),size(map_kxkz,1)]);
+                for i = 1:size(map_kxkz,1)
+                    map_mxmz(:,:,i) = map_kxkz(i,:) - map_kxkz;
+                end
+                
+                % linear and nonlinear operator indexing
+                lin_nonlin_ind = struct();
+                for i = 1:size(map_kxkz,1)
+                    lin_nonlin_ind(i).nxnz(1,:) = map_kxkz(i,:);
+                    
+                    % filter out wavenumber not in model
+                    a = gp.filter_out_of_range(map_kxkz, map_mxmz(:,:,i));
+                    
+                    lin_nonlin_ind(i).mxmz = a;
+        
+                    % recover kxkz
+                    lin_nonlin_ind(i).kxkz = lin_nonlin_ind(i).nxnz(1,:) - ...
+                                                lin_nonlin_ind(i).mxmz;
+                end
+            case 1
+                [lin_nonlin_ind, fullmode, ~] = gp.load_predefined_model(nx);                
+        end
+        
+    end
+
+
+
+
     function [size_n_seq, n_seq] = gen_Np_perm(Np)
 
         % Generate permutation for POD summations
@@ -347,6 +506,70 @@ classdef gp
     end
 
     function N = eval_N_k(y, Lx, Lz, phi, n, m, k, nx, nz, kx, kz, mx, mz, pod_wave,...
+                    diff_weight, int_weight)
+
+    % This funcion evaluates the nonlinear coefficient of the Galerkin
+    % projection
+    % Inputs: y (double array) --- An array of wall normal axis on
+    %                              chebeshev points
+    %         Lx (double)      --- Length of domain in streamwise direction
+    %         Lz (double)      --- Length of domain in spanwise direction 
+    %         phi (complex double array) --- Array of basis function
+    %         n (integer)      --- nonlinear wavenumber coupling 
+    %         m (integer)      --- nonlinear wavenumber coupling
+    %         k (integer)      --- nonlinear wavenumber coupling
+    %         nx, nz, kz, kz, mx, mz (integer) --- nonlinear wavenumber coupling
+    %         pod_wave (integer array) --- Array of wavenumber map 
+    %         diff_weight (double array) --- Differential weight of each
+    %                                        chebeyshev points in y
+    %         int_weight (double array) --- Integration weight of each
+    %                                       chebeyshev points in y
+    % Outputs: N (complex double) --- nonlinear coefficient of current
+    %                                 nonlninear wavenumber coupling
+
+    I_n = gp.find_wave_number_in_map(nx, nz, pod_wave);
+    I_k = gp.find_wave_number_in_map(kx, kz, pod_wave);
+    I_m = gp.find_wave_number_in_map(mx, mz, pod_wave);
+
+    phiu_n = phi(1:3:end,n, I_n);
+    phiv_n = phi(2:3:end,n, I_n);
+    phiw_n = phi(3:3:end,n, I_n);
+
+    phiu_k = phi(1:3:end,k, I_k);
+    phiv_k = phi(2:3:end,k, I_k);
+    phiw_k = phi(3:3:end,k, I_k);    
+
+    phiu_m = phi(1:3:end,m, I_m);
+    phiv_m = phi(2:3:end,m, I_m);
+    phiw_m = phi(3:3:end,m, I_m);
+
+    dphi_u = diff_weight(:,:,1)*phiu_m;
+    dphi_v = diff_weight(:,:,1)*phiv_m;
+    dphi_w = diff_weight(:,:,1)*phiw_m;
+
+    int_nonlin_u = ((2*pi*1i*mx/Lx)*phiu_k.*phiu_m + ...
+                   phiv_k.*dphi_u + (2*pi*1i*mz/Lz)*phiw_k.*phiu_m).*conj(phiu_n);
+    int_nonlin_v = ((2*pi*mx*1i/Lx)*phiu_k.*phiv_m + ...
+                   phiv_k.*dphi_v + (2*pi*mz*1i/Lz)*phiw_k.*phiv_m).*conj(phiv_n);
+    int_nonlin_w = ((2*pi*mx*1i/Lx)*phiu_k.*phiw_m + ...
+                   phiv_k.*dphi_w + (2*pi*mz*1i/Lz)*phiw_k.*phiw_m).*conj(phiw_n);    
+
+    nonlin_u = 0;
+    nonlin_v = 0;
+    nonlin_w = 0;
+    for i = 1:length(y)
+        nonlin_u = nonlin_u + int_weight(i)*int_nonlin_u(i);
+        nonlin_v = nonlin_v + int_weight(i)*int_nonlin_v(i);
+        nonlin_w = nonlin_w + int_weight(i)*int_nonlin_w(i);    
+    end
+    
+    nonlin = nonlin_u + nonlin_v + nonlin_w;
+
+    N = -nonlin/sqrt(Lx*Lz);
+
+    end
+
+    function N = eval_N_k_gram(y, Lx, Lz, phi, n, m, k, nx, nz, kx, kz, mx, mz, pod_wave,...
                     diff_weight, int_weight)
 
     % This funcion evaluates the nonlinear coefficient of the Galerkin
@@ -599,15 +822,21 @@ classdef gp
 
         prod_int = conj(phiv_m).*phiu_n;
 
+        prod_int = phiv_m.*conj(phiu_n);
+
         for i = 1:ny
             prod = prod + w(i)*prod_int(i);
         end
         prod = -prod;
 
         % laminar state !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        lam_u_int = y.*conj(phiu_m).*phiu_n;
-        lam_v_int = y.*conj(phiv_m).*phiv_n;
-        lam_w_int = y.*conj(phiw_m).*phiw_n;
+        % lam_u_int = y.*conj(phiu_m).*phiu_n;
+        % lam_v_int = y.*conj(phiv_m).*phiv_n;
+        % lam_w_int = y.*conj(phiw_m).*phiw_n;
+
+        lam_u_int = y.*conj(phiu_n).*phiu_m;
+        lam_v_int = y.*conj(phiv_n).*phiv_m;
+        lam_w_int = y.*conj(phiw_n).*phiw_m;
         
         lam_u = 0;
         lam_v = 0;
@@ -619,8 +848,14 @@ classdef gp
             lam_w = lam_w + w(i)*lam_w_int(i);
         end
         % !!!!!!!!!!!!!!!!!!! (I MISSED A NEGATIVE SIGN HERE BUT IT
-        %                       WORKS)
-        lam = 2*pi*1i*nx*(lam_u + lam_v + lam_w)/Lx;
+        %                       WORKS) 
+        % ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        % ||||||||||||||||||||||||||||
+        % 20 MARCH 2025: FOLLOWING DESCRIBE THE FIX FOR THE NEGATIVE SIGN
+        % NOTE: (PLEASE SEE SMITH & MOHELIS FORMULATION)
+        %       MAKE SURE THE CONJUGATE OF LINEAR AND NONLINEAR
+        %       OPERATOR IS CONSISTENT
+        lam = -2*pi*1i*nx*(lam_u + lam_v + lam_w)/Lx;
        
         
         % diffusion/viscous
@@ -634,9 +869,13 @@ classdef gp
         diff_v = 0;
         diff_w = 0;
 
-        diff_u_int = dw(:,:,1)*conj(phiu_m).*(dw(:,:,1)*phiu_n);
-        diff_v_int = dw(:,:,1)*conj(phiv_m).*(dw(:,:,1)*phiv_n);
-        diff_w_int = dw(:,:,1)*conj(phiw_m).*(dw(:,:,1)*phiw_n);
+        % diff_u_int = conj(dw(:,:,1)*phiu_m).*(dw(:,:,1)*phiu_n);
+        % diff_v_int = conj(dw(:,:,1)*phiv_m).*(dw(:,:,1)*phiv_n);
+        % diff_w_int = conj(dw(:,:,1)*phiw_m).*(dw(:,:,1)*phiw_n);
+
+        diff_u_int = dw(:,:,1)*phiu_m.*conj((dw(:,:,1)*phiu_n));
+        diff_v_int = dw(:,:,1)*phiv_m.*conj((dw(:,:,1)*phiv_n));
+        diff_w_int = dw(:,:,1)*phiw_m.*conj((dw(:,:,1)*phiw_n));
 
         for i = 1:ny
             diff_u = diff_u + w(i)*diff_u_int(i);
@@ -651,6 +890,149 @@ classdef gp
     end
     
     function [L, N, fullmode_pod] = get_L_N_struct(Re, Np, phi, lin_nonlin_ind, fullmode, pod_wave)
+
+        % This function encasuplate all processes to compute linear and
+        % nonlinear coefficients
+        % Inputs:   Re (double) --- Reynolds number
+        %           Np (integer) --- Number of POD modes for each wavenumber
+        %           phi (complex double array) --- Basis function array
+        %           lin_nonlin_ind (integer array) --- Map of each
+        %                                              wavenumber coupling
+        %           fullmode (integer array) --- Array containing all POD
+        %                                        modes and wavenumber
+        %                                        indexes.
+        %                                        (e.g: 1st col: POD modes,
+        %                                        2nd col: wavenumber in x
+        %                                        3rd col: wavenumber in z)
+        %           pod_wave (integer array) --- An array of wavenumber map
+        % Outputs: L (complex double array) --- An filled completed Linear
+        %                                       matrix that is ready to go
+        %                                       into timestepping
+        %          N (complex double array) --- An filled completed
+        %                                       nonlinear matrix that is
+        %                                       ready to go into
+        %                                       timestepping
+        %          fullmode_pod (integer array) --- An finalised version of
+        %                                           of POD modes to
+        %                                           wavenumber map
+
+        [x,y,z,nx,ny,nz,Lx,Lz] = modal_decomposition.read_geom;
+        
+        const_lin_nonlin_ind = lin_nonlin_ind; % This line saves the index map to be used in ODE45 (nothing mathematical)
+        
+        w = math.f_chebyshev_int_weight(ny);
+        [~,dw] = math.f_chebdiff(ny, 1);
+                        
+        [L, fullpod, fullmode, fullmode_pod] = gp.prep_L_matrix(Np, fullmode);
+        L = gp.find_POD_pair_conj_index_in_model(L, Np, const_lin_nonlin_ind,fullmode);
+        
+        for i = 1:size(L,2)
+            size_n_seq = size(L(i).n_seq,2);
+            nxnz = L(i).nxnz;
+            for i_pod = 1:size_n_seq
+                [L(i).coeff(i_pod), L(i).lam(i_pod), L(i).diff(i_pod), L(i).prod(i_pod)] = ...
+                    gp.eval_L_m(Re, ny, y, Lx, Lz, phi, ...
+                    L(i).n, L(i).n_seq(i_pod), nxnz(1), nxnz(2), pod_wave, dw, w);
+                
+            end
+            disp(['linear coeff ',num2str(i),'/',num2str(size(L,2))])
+        end
+
+        % rearrange field (just for aesthetic)
+        L = orderfields(L, [1:5,9,6:8,10:11]);
+        L = orderfields(L, [1:6,10,7:9,11]);
+        L = orderfields(L, [1:7,11,8:10]);
+
+        N = struct();
+        for i = 1:size(fullpod, 1)
+            N(i).n = fullpod(i); 
+            N(i).coeff = 0;
+        end
+        
+        % Inflate lin_nonlin_ind to match POD number of POD expansions
+        totl_mode = size(lin_nonlin_ind,2);
+        for i = 1:totl_mode*(Np-1)
+            lin_nonlin_ind(i + totl_mode).nxnz = lin_nonlin_ind(i).nxnz;
+            lin_nonlin_ind(i + totl_mode).mxmz = lin_nonlin_ind(i).mxmz;
+            lin_nonlin_ind(i + totl_mode).kxkz = lin_nonlin_ind(i).kxkz;
+        end
+        
+        [size_n_seq, n_seq] = gp.gen_Np_perm(Np);
+        
+        % Assign wavenumbers to struct. And search for mxmz, kxkz index in
+        % "a"
+        disp('Nonlinear computation....')
+        for i = 1:size(N,2)
+            disp(num2str(i))
+            N(i).n_seq = n_seq;
+            N(i).nxnz = lin_nonlin_ind(i).nxnz;
+            N(i).mxmz = lin_nonlin_ind(i).mxmz;
+            N(i).kxkz = lin_nonlin_ind(i).kxkz;
+        
+            % search for corresponding mxmz, kxkz index in a (include Np)
+            for i_mxmz = 1:size(N(i).mxmz,1)
+        
+                mxmz = N(i).mxmz(i_mxmz,:);
+        
+                for i_Np = 1:size_n_seq
+                    I = gp.find_wave_number_pod_in_map(N(i).n_seq(i_Np,1), mxmz(1), mxmz(2), fullmode_pod);
+                    N(i).a_mxmz_loc(i_mxmz,i_Np) = I; 
+                end
+        
+            end
+        
+            for i_kxkz = 1:size(N(i).kxkz,1)
+        
+                kxkz = N(i).kxkz(i_kxkz,:);
+        
+                for i_Np = 1:size_n_seq 
+                    I = gp.find_wave_number_pod_in_map(N(i).n_seq(i_Np,2), kxkz(1), kxkz(2), fullmode_pod);
+                    N(i).a_kxkz_loc(i_kxkz,i_Np) = I; 
+                end            
+        
+            end
+
+            if mod(i,100) == 0
+            disp(['prep nonlinear coeff ',num2str(i),'/',num2str(size(N,2))])
+            end
+        end
+        
+        % Fills in Nonlinear coefficients
+        for i = 1:size(N,2)
+            
+            Np_c = N(i).n;
+            nxnz = N(i).nxnz;
+            kxkz_arr = N(i).kxkz;
+            mxmz_arr = N(i).mxmz;
+        
+            N(i).coeff = zeros(size(kxkz_arr,1), size_n_seq);
+        
+            for i_mxmz = 1:size(mxmz_arr,1)
+                kx = kxkz_arr(i_mxmz,1);
+                kz = kxkz_arr(i_mxmz,2);
+        
+                mx = mxmz_arr(i_mxmz,1);
+                mz = mxmz_arr(i_mxmz,2);
+        
+                for i_local_pod = 1:size_n_seq
+        
+                    m = N(i).n_seq(i_local_pod,1);
+                    k = N(i).n_seq(i_local_pod,2);
+                    N(i).coeff(i_mxmz, i_local_pod) = gp.eval_N_k(y, Lx, Lz, phi, Np_c, m, k, ...
+                                                        nxnz(1),nxnz(2), kx, kz, mx, mz,...
+                                                        pod_wave, dw, w);
+                end
+              
+            end
+
+             disp(['nonlinear coeff ',num2str(i),'/',num2str(size(N,2))])
+        
+        end        
+
+    end
+   
+
+    function [L, N, fullmode_pod] = get_L_N_struct_gram(Re, Np, phi, lin_nonlin_ind, fullmode, pod_wave)
 
         % This function encasuplate all processes to compute linear and
         % nonlinear coefficients
@@ -721,7 +1103,9 @@ classdef gp
         
         % Assign wavenumbers to struct. And search for mxmz, kxkz index in
         % "a"
+        disp('Nonlinear computation....')
         for i = 1:size(N,2)
+            disp(num2str(i))
             N(i).n_seq = n_seq;
             N(i).nxnz = lin_nonlin_ind(i).nxnz;
             N(i).mxmz = lin_nonlin_ind(i).mxmz;
@@ -776,7 +1160,7 @@ classdef gp
         
                     m = N(i).n_seq(i_local_pod,1);
                     k = N(i).n_seq(i_local_pod,2);
-                    N(i).coeff(i_mxmz, i_local_pod) = gp.eval_N_k(y, Lx, Lz, phi, Np_c, m, k, ...
+                    N(i).coeff(i_mxmz, i_local_pod) = gp.eval_N_k_gram(y, Lx, Lz, phi, Np_c, m, k, ...
                                                         nxnz(1),nxnz(2), kx, kz, mx, mz,...
                                                         pod_wave, dw, w);
                 end
@@ -788,7 +1172,13 @@ classdef gp
         end        
 
     end
-    
+
+
+
+
+
+
+
     function [L, fullmode_pod] = get_L_struct(Re, Np, phi, lin_nonlin_ind, fullmode, pod_wave)
 
     % This function encasuplate all processes to compute linear and
@@ -850,17 +1240,71 @@ classdef gp
 
     end
     
+
+
+    function q0 = local_gen_lifetime_a0(dof,global_target_sum)
+
+
+    % first generate 1 number for (n,0,0)
+    q00 = rand(1,1)*0.001;
+    target_sum = global_target_sum/2-q00;
+    q0 = zeros(floor(dof/2),1);
+    
+    
+    q0(1:floor(dof/2)) = gp.gen_rand(floor(dof/2),target_sum);
+    
+    q0(end+1) = sqrt(global_target_sum-target_sum*2);
+    
+    % force conjugation
+    % conj_len = size(L(1).conj_ind_start,1);
+    % for i_conj = 1:conj_len
+    %     st = L(1).conj_ind_start(i_conj);
+    %     ed = L(1).conj_ind_end(i_conj); 
+    % 
+    %     change_pod_ind = L(1).change_POD_ind(i_conj);
+    % 
+    %     q0(st:ed) = flip(conj(q0(change_pod_ind:st-2)));
+    % end
+
+    q0 = [q0;flip(conj(q0(1:end-1)))];
+
+   
+
+    end
+
+
+
+    function a_initial = set_lifetime_initial_conditions(Np,dof)
+
+    % MAGIC !!!!! 
+    % number 15 is related to \pm 1, \pm 2 ROM model.
+        for i = 1:Np
+
+            q0 = gp.local_gen_lifetime_a0(15,0.3/Np);
+        
+            q0out(:,i) = q0;
+        
+        end
+        
+
+        a_initial = reshape(q0out,[dof,1]);
+    
+    end
+
+
+    
+
     function [L_matrix,N_matrix] = built_matrix(L,N)
 
         % This function converts linear and nonlinear struct to matrix
 
+        disp('Building linear and nonlinear matrix. La + N(a,a)')
 
         dof = size(L,2);
 
         L_matrix = zeros(dof,dof);
         
         for i = 1:dof
-            disp(num2str(i))
             linear_loc = L(i).pod_pair;
             linear_coeff = L(i).coeff;
         
@@ -875,7 +1319,9 @@ classdef gp
         NN = zeros(dof,dof*dof);
 
         for i = 1:dof
-            disp(num2str(i))
+
+            disp(['Building nonlinear matrix ', num2str(i)])
+
             % mxmz = N(i).mxmz;
             % kxkz = N(i).kxkz;
             coeff = N(i).coeff;
@@ -899,11 +1345,6 @@ classdef gp
             N_matrix = NN;
 
         end
-
-
-
-
-
 
     function adot = eval_adot(t, a, L, N, nw_pod)
         
@@ -1047,8 +1488,7 @@ classdef gp
 
     end
 
-
-    function adot = eval_adot_ultra_fast(t,a,L,N)
+    function [adot,t_adot_lin] = eval_adot_ultra_fast(t,a,L,N, Np)
 
         disp(num2str(t))
         
@@ -1082,18 +1522,110 @@ classdef gp
         for i_conj = 1:conj_len
             st = L(1).conj_ind_start(i_conj);
             ed = L(1).conj_ind_end(i_conj); % ed for end 
-        
+
             change_pod_ind = L(1).change_POD_ind(i_conj);
-        
+
+            t_adot_nonlin(st:ed) = flip(conj(t_adot_nonlin(change_pod_ind:st-2)));
             t_adot(st:ed) = flip(conj(t_adot(change_pod_ind:st-2)));
         end
-        
-        adot = t_adot;
 
+        adot = t_adot;
+        
+        % append_end = L(1).conj_ind_end(1) - L(1).conj_ind_start(1);
+        % t_adot = [t_adot; zeros(append_end,1)];
+        % r = size(N,2)/Np;
+        % t_adot = reshape(t_adot,[r,Np]);
+        % mid = floor(r/2);
+        % 
+        % t_adot(mid+2:end,:) = flip(conj(t_adot(1:mid,:)));
+        % adot = reshape(t_adot,[r*Np,1]);
     end
 
 
-    function [adot, adot_lin, adot_nonlin] = eval_adot_debug(t, a, L, N, nw_pod, a0)
+    function [adot,t_adot_nonlin] = eval_adot_ultra_fast_noconj(t,a,L,N, Np)
+
+        disp(num2str(t))
+        
+        conj_len = size(L(1).conj_ind_start,1);
+
+        for i_conj = 1:conj_len
+            st = L(1).conj_ind_start(i_conj);
+            ed = L(1).conj_ind_end(i_conj); % ed for end 
+            change_pod_ind = L(1).change_POD_ind(i_conj);
+
+            for i_dof = st-1:ed
+
+                tmp_pod_pair_lin = L(i_dof).pod_pair;
+                t_adot_lin(i_dof,1) = L(i_dof).coeff(:)'*a(tmp_pod_pair_lin);
+                
+                a_mxmz_loc = N(i_dof).a_mxmz_loc(:);
+                a_kxkz_loc = N(i_dof).a_kxkz_loc(:);
+            
+                AA = a(a_mxmz_loc).*a(a_kxkz_loc);
+            
+                coeff_nonlin = N(i_dof).coeff(:);
+            
+                t_adot_nonlin(i_dof,1) = coeff_nonlin'*AA;
+            end
+        
+        end
+        
+        t_adot = t_adot_nonlin + t_adot_lin;
+        
+        conj_len = size(L(1).conj_ind_start,1);
+        for i_conj = 1:conj_len
+            st = L(1).change_POD_ind(i_conj);
+            ed = L(1).conj_ind_start(i_conj); % ed for end 
+
+            change_pod_ind = L(1).change_POD_ind(i_conj);
+
+            t_adot(st:ed-2) = flip(conj(t_adot(ed:L(1).conj_ind_end(i_conj))));
+            t_adot_nonlin(st:ed-2) = flip(conj(t_adot_nonlin(ed:L(1).conj_ind_end(i_conj))));
+
+        end
+
+        adot = t_adot;
+        
+    end
+
+
+
+
+
+
+
+
+
+
+    function [adot] = eval_adot_matrix(t,a,L_struct,L,N)
+        % This function works with built_matrix(L,N). Inspired by
+        % galerkinsys.m
+
+        disp(num2str(t));
+
+        aa = a*a.';
+        aa = aa(:);
+
+        adot = L*a + N*aa;
+        adot_nonlin = N*aa;
+       
+
+        % force conjugation
+        conj_len = size(L_struct(1).conj_ind_start,1);
+        for i_conj = 1:conj_len
+            st = L_struct(1).conj_ind_start(i_conj);
+            ed = L_struct(1).conj_ind_end(i_conj); % ed for end 
+
+            change_pod_ind = L_struct(1).change_POD_ind(i_conj);
+
+            adot(st:ed) = flip(conj(adot(change_pod_ind:st-2)));
+
+        end
+
+
+    end
+
+    function [adot, adot_lin, adot_nonlin] = eval_adot_debug(t, a, L, N, nw_pod)
 
     % Debug code for eval_adot.
     % Inputs: SEE eval_adot
@@ -1121,7 +1653,9 @@ classdef gp
     
                     anxnz = a(L(i_lin).pod_pair(i_pod));
     
-                    adot_lin(i_lin) = adot_lin(i_lin) + L(i_lin).coeff(i_pod)*anxnz;
+                    % adot_lin(i_lin) = adot_lin(i_lin) + L(i_lin).diff(i_pod)*anxnz;
+                    adot_lin(i_lin) = adot_lin(i_lin) + conj(L(i_lin).coeff(i_pod))*anxnz;
+                    
                 end
     
                 % nonlinear coefficient
@@ -1164,10 +1698,11 @@ classdef gp
 
             adot(st:ed) = flip(conj(adot(change_pod_ind:st-2)));
             adot_nonlin(st:ed) = flip(conj(adot_nonlin(change_pod_ind:st-2)));
+            adot_lin(st:ed) = flip(conj(adot_lin(change_pod_ind:st-2)));
+
         end
 
     end
-
 
     function [L, lam, diff, prod,Lv,Lu] = eval_L_m_verify(Re, ny, y, Lx, Lz, phi, n, m, nx, nz, pod_wave, dw, w)
 
@@ -1303,10 +1838,36 @@ classdef gp
         % L = orderfields(L, [1:6,10,7:9,11]);
         % L = orderfields(L, [1:7,11,8:10]);
     end
-
     
+    function x = gen_rand(n,target_sum)
+    % Generated by ChatGPT
+    
+    % Set the target sum of squares
+    
+    % Generate random numbers with a sum of squares equal to target_sum
+    while true
+        % Generate random numbers in the range [0, 1]
+        x = rand(n, 1);  % Random values between 0 and 1
+        
+        % Scale the random numbers to match the target sum of squares
+        scale_factor = sqrt(target_sum / sum(x.^2));
+        x = x * scale_factor;
+        
+        % Ensure the scaled numbers are still within [0, 1]
+        if all(x >= 0 & x <= 1) && abs(sum(x.^2) - target_sum) < 1e-6
+            break;
+        end
+    end
+    
+    % Check that their sum of squares is 0.3
+    % disp('Sum of squares:');
+    % disp(sum(x.^2));
+    end
+
+
+
     %% ADDED 29/DEC/2024. TO FACILITATES BETTER MATRIX OPERATIONS
-    function adot = eval_adot_matrix_noconj(t,X,L,N,conj_ind)
+    function [adot] = eval_adot_matrix_noconj(t,X,L,N,conj_ind)
     disp(num2str(t))
     
     a0a0 = X*X.';
@@ -1316,7 +1877,7 @@ classdef gp
     
     adot(conj_ind(:,2)) = conj(adot(conj_ind(:,1)));
     
-    
+    % Na0a0 = N*a0a0;
     end
    
     function a0 = force_ic_conj(L,a0)
@@ -1374,6 +1935,8 @@ classdef gp
     a0 = [real(a0) imag(a0)].*ri_ind;
     a0 = a0(:,1) + 1i*a0(:,2);
     end
+
+
 
 
 
