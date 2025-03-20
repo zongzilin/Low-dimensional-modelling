@@ -5,7 +5,7 @@ This code performs modal reduction and Galerkin projection of plane couette flow
 ## Problem
  - In modal decomposition, one must mannually set the number of wavenumber in span and streamwise direction.
  - In moal decomposition, the code is not aware how many dns file (i.e xx.nc) are there to load. That need to be mannually set.
- - The code does not know about basis normalisation.
+ - The code only normalise basis based on energy
  - Why sometimes the code runs soooooo slow?
 
 ## File prefixes
